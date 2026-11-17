@@ -1,0 +1,15 @@
+{
+  "name": "aioffice",
+  "private": true,
+  "type": "module",
+  "description": "AI オフィスの共有スマホアプリと、各社の Paperclip に入れる plugin",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@paperclipai/plugin-sdk": "2026.1001.0",
+    "esbuild": "0.25.10",
+    "jsqr": "1.4.0",
+    "qrcode-generator": "1.4.4"
+  }
+}

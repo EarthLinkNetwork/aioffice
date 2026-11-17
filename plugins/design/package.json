@@ -1,0 +1,8 @@
+{
+  "name": "@aioffice/plugin-design",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "AI Office design desk: turns a logo or flyer request from the Design room into a task for the design employee.",
+  "paperclipPlugin": { "manifest": "./dist/manifest.js", "worker": "./dist/worker.js" }
+}

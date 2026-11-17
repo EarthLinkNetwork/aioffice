@@ -1,0 +1,8 @@
+{
+  "name": "@aioffice/plugin-office",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "AI Office: the office screen (rooms, desks, what each room does) for each company, in English and Japanese.",
+  "paperclipPlugin": { "manifest": "./dist/manifest.js", "worker": "./dist/worker.js" }
+}

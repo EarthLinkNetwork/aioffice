@@ -1,0 +1,71 @@
+# 公開の package の試験（仕様 docs/design/2026-11-15-public-package.md「CI」の 1・3・5 の一部）
+# 変更のたびに、まっさらな container を RUN.txt と同じ行で起動し、wizard を英語と日本語で通し、断られるべき要求が断られ、
+# 止めて起こしても・container を作り直してもデータが残ることを、amd64 と arm64 の両方で確かめる
+name: package
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  # label の event は label ごとに別の組にする（ほかの label を付けた時に、回っている container の段を取り消さない）
+  group: package-${{ github.ref }}-${{ github.event.action == 'labeled' && github.event.label.name || 'change' }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+
+# runner（2026-11-17）: 組織の Actions の無料枠を使い切ったので、PR ごとの unit は組織の自前の runner（docker の要らない runner-light）で回す。
+# container の段（2026-11-20）: 組織の Actions の予算（月 $5）を使い切り GitHub の runner が始まらなくなったので、持ち主の判断（お金をかけない案）で自前の runner に移した。
+#   amd64 は組織の自前の runner-docker、arm64 はこの repo 専用に登録した自前の arm64 の機械の runner（label aioffice-arm64）。
+#   名前の決まった container・volume・網・port がほかの repo や host の container にぶつからないよう、host の docker には run ごとに名前の違う container を 1 つだけ作り、
+#   その中に別の docker を起こして段を回す（test/e2e/ci-isolated.sh）。job の container（container:）は使わない（runner が host の docker の socket を必ず渡すため）。
+# 回し方は、写しの PR に label release-ci を付ける（PR の check の一覧と main の保護が数えるのは pull_request の event の run だけ。
+# 手動の実行 workflow_dispatch の check は commit に付き API では PR にも結び付いて見えるが数えられず、保護が「expected」のまま断った・2026-11-18）。手動の実行は試しに回す時のために残す。
+# この repo を public にする時は、自前の runner を fork の PR に使わせないため、unit も container の段も GitHub の runner（public は無料）に戻し、自前の arm64 の runner を外す。
+jobs:
+  unit:
+    runs-on: [self-hosted, linux, x64, ci, runner-light]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+
+  container:
+    name: container (${{ matrix.arch }})
+    # PR の変更と main への push では回さない（公開版に上げる前に、label release-ci を付けた時に 1 回だけ）
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'release-ci')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: '["self-hosted","linux","x64","ci","runner-docker"]' }
+          - { arch: arm64, runner: '["self-hosted","linux","ARM64","aioffice-arm64"]' }
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    timeout-minutes: 240 # AI の使用量の上限の e2e が英日で各 25〜45 分（見回りを 1 分ごとに回し、再試行の 70 秒・期限の 150 秒を待つ）。自前の runner の隔てた container では build も遅い
+    env:
+      # PR の event の github.sha は main と合わせた commit なので、写し S（PR の head）そのものを試す
+      TAG: ci-${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { ref: "${{ github.event.pull_request.head.sha || github.sha }}" }
+      # 埋め込みの部品（Ollama と bge-m3・約 2.6GB）は取得の script の hash を key に cache し、毎回取り直さない（範囲 2026-11-17 作り方 3）。cache は 1 つの tar
+      - name: 埋め込みの部品の cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/embed.tar
+          key: embed-tar-${{ matrix.arch }}-${{ hashFiles('packages/aioffice/embed/fetch-embed.sh') }}
+      # 段の中身は test/e2e/container-stage.sh。host の docker には run ごとに名前の違う container を 1 つだけ作り、その中の別の docker で回す（test/e2e/ci-isolated.sh の頭の注記）
+      - name: 隔てた container の中で、build・許諾・英日の e2e・作り直し・網なしを回す
+        # exec: 取り消しの SIGINT・SIGTERM を runner は step の shell にだけ送るので、script をその shell と入れ替えて trap で片付けさせる（exec しないと隔てた container が残った・2026-11-20）
+        run: exec bash test/e2e/ci-isolated.sh ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        continue-on-error: true # 画面は確かめの補助。Actions の保存の枠が尽きても段の結果を変えない
+        with:
+          name: wizard-shots-${{ matrix.arch }}
+          path: shots/
+          if-no-files-found: ignore

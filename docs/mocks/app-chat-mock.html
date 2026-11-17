@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Office チャット mock</title>
+<style>
+:root{--screen:#f7f8fa;--card:#fff;--ink:#18202b;--sub:#5d6878;--line:#dde2e8;--accent:#2c6bed;--accentInk:#fff;--urgent:#d6452f;--ok:#2f8a57;--me:#2c6bed;--meInk:#fff;--bg:#e9ecf1}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--screen:#141922;--card:#1c2330;--ink:#e8edf4;--sub:#9aa6b6;--line:#2a3342;--accent:#5b8ff5;--accentInk:#0b1020;--urgent:#ff6b55;--ok:#4fbf80;--me:#5b8ff5;--meInk:#0b1020;--bg:#0d1118;color-scheme:dark}}
+:root[data-theme="dark"]{--screen:#141922;--card:#1c2330;--ink:#e8edf4;--sub:#9aa6b6;--line:#2a3342;--accent:#5b8ff5;--accentInk:#0b1020;--urgent:#ff6b55;--ok:#4fbf80;--me:#5b8ff5;--meInk:#0b1020;--bg:#0d1118;color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:0;padding-block:24px;padding-inline:16px}
+h1{font-size:20px;margin:0 0 4px}
+.lead{color:var(--sub);max-width:70ch;margin:0 0 20px}
+.grid{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start}
+.view{display:flex;flex-direction:column;gap:8px;width:300px;max-width:100%}
+.view h2{font-size:13px;margin:0;color:var(--sub);font-weight:600}
+.phone{background:var(--screen);border:1px solid var(--line);border-radius:28px;overflow:hidden;height:560px;display:flex;flex-direction:column}
+.bar{display:flex;align-items:center;gap:8px;padding:14px 14px 8px;font-weight:700;font-size:16px}
+.bar .back{color:var(--accent);font-weight:400;font-size:14px}
+.bar .sub{margin-left:auto;font-size:12px;color:var(--sub);font-weight:400}
+.body{flex:1;overflow:auto;padding:4px 12px 12px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.tabs{display:flex;border-top:1px solid var(--line);background:var(--card)}
+.tabs div{flex:1;text-align:center;padding:6px 0 10px;font-size:11px;color:var(--sub)}
+.tabs div b{display:block;font-size:18px;line-height:22px;font-weight:400}
+.tabs .on{color:var(--accent);font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.row{display:flex;gap:10px;align-items:flex-start}
+.av{width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accentInk);display:grid;place-items:center;font-size:13px;font-weight:700;flex:none}
+.av.g{background:#7a4fd0}.av.o{background:var(--ok)}.av.r{background:var(--urgent)}
+.muted{color:var(--sub);font-size:12px}
+.bub{max-width:82%;padding:8px 11px;border-radius:16px;font-size:13px}
+.ai{background:var(--card);border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
+.me{background:var(--me);color:var(--meInk);align-self:flex-end;border-bottom-right-radius:4px}
+.sys{align-self:center;font-size:11px;color:var(--sub);background:transparent}
+.input{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line);background:var(--card)}
+.input span{flex:1;border:1px solid var(--line);border-radius:18px;padding:7px 12px;color:var(--sub);font-size:13px}
+.input i{font-style:normal;background:var(--accent);color:var(--accentInk);border-radius:50%;width:32px;height:32px;display:grid;place-items:center}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:9px;text-align:center;font-weight:700;font-size:13px}
+.btn.p{background:var(--accent);color:var(--accentInk);border-color:var(--accent)}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:11px;color:var(--sub);background:var(--card)}
+.seg{display:flex;gap:6px}
+.notes{margin-top:28px;max-width:70ch}
+.notes h3{font-size:15px;margin:18px 0 6px}
+.notes li{margin:3px 0}
+table{border-collapse:collapse;font-size:13px}
+td,th{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+.wrap{overflow-x:auto}
+</style>
+</head>
+<body>
+<h1>AI Office アプリ — 秘書と話す・担当と話す（mock・案）</h1>
+<p class="lead">（画面の中の文・数は例です。）下のタブは毎日使う「受信箱・秘書・Daily Times・会社」の 4 つ。設定は右上の ⚙️。担当は「会社」の部署から・判断の件から・秘書を通して行く（2026-11-14 開発元の指摘「毎日使うのは受信箱・秘書・Daily Times。担当は直接使う機会が少ない。会社の状況には各部署のサマリー」を受けて改訂）。</p>
+
+<div class="grid">
+
+<div class="view"><h2>① 秘書（下のタブ「秘書」・開いてすぐ話せる）</h2>
+<div class="phone">
+ <div class="bar">秘書 <span class="sub">履歴 ›　⚙️</span></div>
+ <div class="body">
+  <div class="bub sys">今日 10:02</div>
+  <div class="bub me">11/20 17:30 レストラン 4名、私のカレンダーに入れておいて</div>
+  <div class="bub ai">事務担当に頼みました（ABC-11855）。<br>登録しました: 11/20(金) 17:30〜19:30「レストラン（4名）」。<br><b>注意:</b> 19:00 の「友人とご飯」と 30 分重なります。</div>
+  <div class="muted" style="align-self:flex-start">事務担当に回した・2 分</div>
+  <div class="bub me">ありがとう。重なりはそのままでいい</div>
+  <div class="bub ai">わかりました。そのままにします。</div>
+ </div>
+ <div class="input"><span>秘書に話す（マイクで話して書ける）</span><i>↑</i></div>
+ <div class="tabs"><div><b>📥</b>受信箱</div><div class="on"><b>💬</b>秘書</div><div><b>📰</b>Daily Times</div><div><b>🏢</b>会社</div></div>
+</div></div>
+
+<div class="view"><h2>② 秘書の履歴（「履歴 ›」から）</h2>
+<div class="phone">
+ <div class="bar"><span class="back">‹ 秘書</span> 履歴</div>
+ <div class="body">
+  <div class="btn p">＋ 新しい話</div>
+  <div class="card"><b>私のカレンダーに予定</b><div class="muted">今日 10:02・事務担当に回した・済み</div></div>
+  <div class="card"><b>来週の請求書の送付</b><div class="muted">昨日・経理に回した・返事待ち</div></div>
+  <div class="card"><b>開発元のサーバーのディスクの残り</b><div class="muted">11/12・済み</div></div>
+  <div class="muted" style="text-align:center">話は 1 件ずつ Paperclip の課題として残る</div>
+ </div>
+ <div class="tabs"><div><b>📥</b>受信箱</div><div class="on"><b>💬</b>秘書</div><div><b>📰</b>Daily Times</div><div><b>🏢</b>会社</div></div>
+</div></div>
+
+<div class="view"><h2>③ 会社（下のタブ「会社」・部署ごとのサマリー → 担当）</h2>
+<div class="phone">
+ <div class="bar">会社 <span class="sub">Example 社 ▾　⚙️</span></div>
+ <div class="body">
+  <div class="card"><b>全体</b><div style="font-size:13px">担当 12 人のうち 2 人が作業中。判断待ち 3 件。止まっている課題 1 件。</div></div>
+  <div class="card"><div class="row"><div class="av o">事</div><div style="flex:1"><b>事務</b> <span class="chip">作業中 1</span><div class="muted">メール 4 件を片付け・カレンダーに 1 件登録（ABC-11855）</div></div></div></div>
+  <div class="card" style="border-color:var(--urgent)"><div class="row"><div class="av g">広</div><div style="flex:1"><b>広報（SNS・Blog）</b> <span class="chip" style="color:var(--urgent)">注意</span><div class="muted">Threads の投稿が 3 回続けて API_ERROR。記事 1 本が公開待ち</div></div></div></div>
+  <div class="card"><div class="row"><div class="av">編</div><div style="flex:1"><b>編集（News・アニメ・コミック）</b><div class="muted">今日の号を 6:30 に発行</div></div></div></div>
+  <div class="card"><div class="row"><div class="av r">技</div><div style="flex:1"><b>技術（PR Review・Alerts）</b><div class="muted">PR 2 本をレビュー・警報 0</div></div></div></div>
+  <div class="muted" style="text-align:center">部署を押すと、担当の一覧と担当ごとの話</div>
+ </div>
+ <div class="tabs"><div><b>📥</b>受信箱</div><div><b>💬</b>秘書</div><div><b>📰</b>Daily Times</div><div class="on"><b>🏢</b>会社</div></div>
+</div></div>
+
+<div class="view"><h2>③-2 部署を押した時（担当の一覧）</h2>
+<div class="phone">
+ <div class="bar"><span class="back">‹ 会社</span> 広報</div>
+ <div class="body">
+  <div class="card"><b>要約</b><div style="font-size:13px">今週の記事 2 本を公開。SNS は Threads だけ失敗が続く。</div></div>
+  <div class="card row"><div class="av g">S</div><div><b>SNS</b><div class="muted">投稿と確認・残件 2・話す ›</div></div></div>
+  <div class="card row"><div class="av">ブ</div><div><b>Blog</b><div class="muted">記事の予定と公開・話す ›</div></div></div>
+  <div class="card row"><div class="av">予</div><div><b>Blog Schedule</b><div class="muted">公開の予定・話す ›</div></div></div>
+ </div>
+ <div class="tabs"><div><b>📥</b>受信箱</div><div><b>💬</b>秘書</div><div><b>📰</b>Daily Times</div><div class="on"><b>🏢</b>会社</div></div>
+</div></div>
+
+<div class="view"><h2>④ 担当と話す（部署の一覧・判断の件・秘書から・その担当の履歴もここ）</h2>
+<div class="phone">
+ <div class="bar"><span class="back">‹ 技術</span> セキュリティ <span class="sub">履歴 ›</span></div>
+ <div class="body">
+  <div class="chip" style="align-self:center">判断の件から: Gateway の P1 を別の課題で直す方針</div>
+  <div class="bub me">漏えいの可能性はある？ 今の PR を merge しても大丈夫？</div>
+  <div class="bub ai">今の PR は秘密の値を記録に出す箇所（P1）が残っています。外に出た記録は、この 30 日で 0 件でした。merge する前に IN-8154 で直すか、少なくとも記録に出さない一時の対策を入れることを勧めます。</div>
+  <div class="muted" style="align-self:flex-start">セキュリティの決まりとスキルに従って答えています</div>
+ </div>
+ <div class="input"><span>セキュリティに話す</span><i>↑</i></div>
+ <div class="tabs"><div><b>📥</b>受信箱</div><div><b>💬</b>秘書</div><div><b>📰</b>Daily Times</div><div class="on"><b>🏢</b>会社</div></div>
+</div></div>
+
+<div class="view"><h2>⑤ 判断の件に「担当と話す」を足す</h2>
+<div class="phone">
+ <div class="bar"><span class="back">‹ 受信箱</span> 判断</div>
+ <div class="body">
+  <div class="card"><b>要約</b><div style="font-size:13px">Gateway の秘密情報（P1）の直しを、今の PR ではなく IN-8154 で行う方針を了承しますか。</div></div>
+  <div class="card"><b>押すと決まります</b>
+   <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+    <div class="btn">別の課題で直す方針を了承</div>
+    <div class="btn">★ 今は了承しない <span class="muted">AI の推奨</span></div>
+   </div></div>
+  <div class="btn p">決められない — 担当と話す</div>
+  <div class="muted">この件の担当（セキュリティ）との話を開く。件の中身を最初に渡すので、説明し直さなくてよい。話した後、この画面に戻って決める。</div>
+ </div>
+ <div class="tabs"><div class="on"><b>📥</b>受信箱</div><div><b>💬</b>秘書</div><div><b>📰</b>Daily Times</div><div><b>🏢</b>会社</div></div>
+</div></div>
+
+<div class="view"><h2>⑥ Daily Times（下のタブ・毎日見る）</h2>
+<div class="phone">
+ <div class="bar">Daily Times <span class="sub">11/14 号 ▾　⚙️</span></div>
+ <div class="body">
+  <div class="card"><b>今日すること</b><div class="muted">4 件・期限きょう 1</div>
+   <div style="font-size:13px;margin-top:4px">・povo の料金の確認（期限きょう）<br>・FRSE の投票（あと 2 日）</div></div>
+  <div class="card"><b>新着</b><div class="muted">6 件</div><div style="font-size:13px;margin-top:4px">・AWS の請求の案内<br>・展示会の案内 …</div></div>
+  <div class="card"><b>会社のできごと</b><div style="font-size:13px">記事 1 本を公開・PR 2 本をレビュー</div></div>
+  <div class="muted" style="text-align:center">今の Web の Daily Times と同じ号をアプリで読む</div>
+ </div>
+ <div class="tabs"><div><b>📥</b>受信箱</div><div><b>💬</b>秘書</div><div class="on"><b>📰</b>Daily Times</div><div><b>🏢</b>会社</div></div>
+</div></div>
+
+</div>
+
+<div class="notes">
+<h3>メニューの置き方（2026-11-14 改訂）</h3>
+<ul>
+<li><b>下のタブは毎日使うもの</b>: 受信箱（判断）・秘書（話す）・Daily Times（毎日読む）・会社（部署ごとのサマリー）。</li>
+<li><b>秘書は 1 回で話せる。</b> 自分で片付かない話は担当に回し、結果を返す（今日のカレンダーの件と同じ形）。</li>
+<li><b>担当は 3 つの道から</b>: 会社 → 部署 → 担当／判断の件の「決められない — 担当と話す」／秘書に頼む。</li>
+<li><b>設定は右上の ⚙️</b>（めったに開かない）。</li>
+</ul>
+<h3>仕組み（作る所）</h3>
+<div class="wrap"><table>
+<tr><th>場所</th><th>作るもの</th></tr>
+<tr><td>Paperclip（開発元の会社）</td><td>担当「秘書」を足す（決まり kit/agents/secretary.md・担当に課題を回せる）。話 1 件 = 課題 1 件、発言 = comment。</td></tr>
+<tr><td>plugin「mobile」（aioffice）</td><td>話の一覧・発言の受け渡し（アプリの発言を課題の comment にし、担当を課題つきで起こす。担当の返事を通知 API へ返す）。担当の一覧を渡す。</td></tr>
+<tr><td>通知 API（開発元）</td><td>話（thread）と発言（message）の口と保存。返事が来たら push（題と最初の 1 行）。</td></tr>
+<tr><td>アプリ（aioffice）</td><td>①〜⑥ の画面。下のタブを受信箱・秘書・Daily Times・会社に・設定は右上へ。</td></tr>
+<tr><td>会社の状況・Daily Times（開発元・plugin）</td><td>部署ごとのサマリー（要約・注意・担当の動き）と Daily Times の号を plugin 経由で渡す。部署は担当の分け方（設定で持つ）。</td></tr>
+</table></div>
+<h3>まだ決めていないこと</h3>
+<ul>
+<li>返事の速さ: 担当は起こされてから動くので、1 回の返事に 30 秒〜数分かかる（その間は「考えています…」を出す）。</li>
+<li>費用: 1 回の発言ごとに担当が 1 回動く（Paperclip の担当の実行の費用）。</li>
+</ul>
+</div>
+</body>
+</html>

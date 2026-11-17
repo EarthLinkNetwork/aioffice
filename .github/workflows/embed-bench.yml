@@ -1,0 +1,56 @@
+# 図書室の意味の近さの検索の速さを測る（amd64 は組織の自前の runner・arm64 は GitHub の runner。自前の runner の数は普通の PC と同じではない）
+# 範囲: docs/review/2026-11-17-library-embedding-scope.md の「作り込みの前に確かめること」（amd64 と arm64、thread 2 と 4）
+# 測るだけで合否は付けない。結果は job の summary と記録の artifact に出す
+name: embed-bench
+# 回すのは、PR に bench の label を付けた時（amd64 だけ・自前の runner）と、手動の時（amd64 と arm64）だけ（2026-11-17・Actions の無料枠）
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: bench (${{ matrix.arch }})
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'bench'
+    # job の中に置く（if が偽の run はこの group に入らず、ほかの label を付けても計測中の bench を取り消さない）
+    concurrency:
+      group: embed-bench-${{ github.ref }}-${{ matrix.arch }}   # arch ごと（手動の時の amd64 と arm64 が取り消し合わない）
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"arch":"amd64","runner":["self-hosted","linux","x64","ci","runner-light"]},{"arch":"arm64","runner":"ubuntu-24.04-arm"}]' || '[{"arch":"amd64","runner":["self-hosted","linux","x64","ci","runner-light"]}]') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      - name: 空きのディスクと CPU
+        run: df -h / && nproc && lscpu | grep -E "Model name|Thread|Core|Socket" || true
+      - name: Ollama（CPU の部品だけ）と bge-m3 を固定した sha256 で取る
+        run: sh packages/aioffice/embed/fetch-embed.sh ${{ matrix.arch }} /tmp/embed
+      - name: 速さを測る
+        shell: bash   # -eo pipefail（測れなかった回を緑にしない）
+        env:
+          OLLAMA_MODELS: /tmp/embed/models
+          OLLAMA_HOST: 127.0.0.1:11434
+          OLLAMA_KEEP_ALIVE: "-1"
+          OLLAMA_NOPRUNE: "1"
+          OLLAMA_NUM_PARALLEL: "1"
+        run: |
+          /tmp/embed/ollama/bin/ollama serve > /tmp/serve.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:11434/api/version >/dev/null && break; sleep 1; done
+          curl -fs http://127.0.0.1:11434/api/version >/dev/null || { echo "ollama serve が立ち上がらない"; cat /tmp/serve.log; exit 1; }
+          node test/bench/embed-bench.mjs 2 4 | tee /tmp/bench.json
+          ps -o rss=,args= -C ollama | awk '{printf "RSS %.0f MB: %s %s\n", $1/1024, $2, $3}'
+          { echo '### embed-bench (${{ matrix.arch }})'; echo '```json'; cat /tmp/bench.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: embed-bench-${{ matrix.arch }}
+          path: |
+            /tmp/bench.json
+            /tmp/serve.log

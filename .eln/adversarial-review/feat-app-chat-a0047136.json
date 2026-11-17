@@ -1,0 +1,16 @@
+{
+  "reviewed_diff_sha256": "95f79129c95d5ce4f10b59e898dd8302954a30f790dc895e9601e596bf1c91ae",
+  "verdict": "passed",
+  "confirmed": 2,
+  "fixed": 2,
+  "reviewer": "workflow-independent-review(app#11)",
+  "reviewed_at": "2026-11-14T04:54:24+0900",
+  "coverage": {
+    "reviewed": [
+      "apps/mobile の画面・client・push の行き先・試験（workflow の独立レビューで reject の Blocking を直し approve・main を取り込んで 161 件通過・tsc 通過）"
+    ],
+    "not_reviewed": [
+      "iPhone の実機（TestFlight の後に確かめる）・mock との parity の表（実機の後）・codex（判定 not-required）"
+    ]
+  }
+}

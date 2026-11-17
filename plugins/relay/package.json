@@ -1,0 +1,8 @@
+{
+  "name": "@aioffice/plugin-relay",
+  "version": "0.1.2",
+  "type": "module",
+  "private": true,
+  "description": "AI Office relay: an agent can ask a person in another company of this office a question, or send something up a chain of approvers. Each person gets an issue in their own company; the answer comes back to the original issue.",
+  "paperclipPlugin": { "manifest": "./dist/manifest.js", "worker": "./dist/worker.js" }
+}

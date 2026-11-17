@@ -1,0 +1,16 @@
+{
+  "reviewed_diff_sha256": "2d07aff8af97988f81dc024afeaf4d17e4487c222eb12bf9a77313ddfa2ee8a6",
+  "verdict": "passed",
+  "confirmed": 0,
+  "fixed": 0,
+  "reviewer": "independent-claude-agent(3 rounds)",
+  "reviewed_at": "2026-11-15T10:48:28+0900",
+  "coverage": {
+    "reviewed": [
+      "docs/design/2026-11-15-public-package.md 全文（起動の行・起動係の守り・device login・案内の条件・CI・言語・限界）, docs/review/2026-11-15-fresh-install/README.md"
+    ],
+    "not_reviewed": [
+      "実装（段 2 以降で別 PR）・Paperclip 本体のコードの実測（段 2 の最初で行う）"
+    ]
+  }
+}

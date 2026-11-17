@@ -1,0 +1,1 @@
+{ "name": "@cursor/sdk", "version": "0.0.0-not-included", "type": "module", "main": "index.js", "exports": { ".": "./index.js" }, "license": "MIT" }

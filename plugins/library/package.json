@@ -1,0 +1,8 @@
+{
+  "name": "@aioffice/plugin-library",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "AI Office library: keeps a searchable copy of the company's tasks, comments, decisions and files you add, and adds close past records to new tasks for AI staff.",
+  "paperclipPlugin": { "manifest": "./dist/manifest.js", "worker": "./dist/worker.js" }
+}

@@ -1,0 +1,16 @@
+{
+  "reviewed_diff_sha256": "107839285208c46e4a0a7d61c2c9112328c4796fb17318b35df552062f96616d",
+  "verdict": "passed",
+  "confirmed": 5,
+  "fixed": 5,
+  "reviewer": "independent-agent-spec-r3",
+  "reviewed_at": "2026-11-14T04:17:04+0900",
+  "coverage": {
+    "reviewed": [
+      "docs/review/2026-11-14-app-chat-spec.md（独立レビュー 3 回・r1/r2 reject の Blocking 5 件を直し r3 approve）・docs/mocks/app-chat-mock.html（承認済み）"
+    ],
+    "not_reviewed": [
+      "口の形（契約）の節は r3 の後に足した（実装の独立レビューで照合する）"
+    ]
+  }
+}

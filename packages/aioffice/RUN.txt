@@ -1,0 +1,15 @@
+# AI Office — the only official commands. README, the blog article, and CI read these lines from this file. Do not copy them by hand.
+# AI オフィス — 正式のコマンドはここだけ。README・記事・CI はこのファイルから読む。手で写さない。
+# VERSION is replaced by the release version (for example 0.1.0). / VERSION は公開の版に置き換える（例 0.1.0）。
+
+[start]
+docker run -d --name aioffice --stop-timeout 60 -p 127.0.0.1:3100:3100 -v aioffice:/data ghcr.io/earthlinknetwork/aioffice:VERSION
+
+[open]
+http://localhost:3100/
+
+[update]
+docker stop aioffice && docker rm aioffice && docker pull ghcr.io/earthlinknetwork/aioffice:VERSION && docker run -d --name aioffice --stop-timeout 60 -p 127.0.0.1:3100:3100 -v aioffice:/data ghcr.io/earthlinknetwork/aioffice:VERSION
+
+[reset-owner]
+docker exec aioffice aioffice-reset-owner
