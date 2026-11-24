@@ -1,0 +1,109 @@
+{
+ "note": "図書室の点検（範囲の保証 13・L6）。試しの会社の記録と、上位 5 件に答えの言葉が入るかを見る質問の組。会社の語は入れない",
+ "records": [
+  {
+   "title": "Bakery opening hours",
+   "text": "The bakery opens at 7am on weekdays and 8am on weekends. It closes at 6pm every day."
+  },
+  {
+   "title": "Logo colors decided",
+   "text": "We chose forest green and cream for the logo. The round shape stays."
+  },
+  {
+   "title": "Flyer print order",
+   "text": "Print 500 flyers on A5 matte paper. The printer is Kawase Print and delivery takes three days."
+  },
+  {
+   "title": "Supplier for flour",
+   "text": "Flour comes from Hokuto Mills. Orders go in every Monday morning."
+  },
+  {
+   "title": "Holiday closing",
+   "text": "The shop is closed from December 31 to January 3 for the new year holiday."
+  },
+  {
+   "title": "Price change for bread",
+   "text": "The basic loaf goes from 320 yen to 350 yen starting next month because butter costs went up."
+  },
+  {
+   "title": "New staff training",
+   "text": "New part-time staff do two shifts with a senior baker before working alone. The checklist is in the shared folder."
+  },
+  {
+   "title": "Website photo shoot",
+   "text": "The photographer comes on Thursday. Bring the seasonal cakes and the croissants for the photos."
+  },
+  {
+   "title": "Oven repair",
+   "text": "The second oven was repaired by Sanko Service. The thermostat was replaced and the warranty is one year."
+  },
+  {
+   "title": "Social post schedule",
+   "text": "Post on Instagram on Tuesday and Friday at noon. Use the hashtag for the seasonal menu."
+  }
+ ],
+ "questions": [
+  {
+   "q": "When does the bakery open on weekends",
+   "a": "8am"
+  },
+  {
+   "q": "logo colors",
+   "a": "forest green"
+  },
+  {
+   "q": "how many flyers to print",
+   "a": "500"
+  },
+  {
+   "q": "where does flour come from",
+   "a": "Hokuto"
+  },
+  {
+   "q": "new year holiday closing",
+   "a": "January 3"
+  },
+  {
+   "q": "loaf price change",
+   "a": "350"
+  },
+  {
+   "q": "training for new staff",
+   "a": "senior baker"
+  },
+  {
+   "q": "photographer photo shoot",
+   "a": "Thursday"
+  },
+  {
+   "q": "oven repair warranty",
+   "a": "one year"
+  },
+  {
+   "q": "Instagram post schedule",
+   "a": "Tuesday"
+  }
+ ],
+ "passRate": 0.8,
+ "semantic": {
+  "note": "意味の近さの検索（範囲 2026-11-17 の保証 1〜3）。英語の記録を日本語の言い換えで引く（語では 1 つも当たらない）。上位 5 件に答えが入り、その当たりは意味だけの当たり。関係ない問いでは意味だけの当たりが 0",
+  "questions": [
+   {
+    "q": "小麦粉はどこから仕入れていますか",
+    "a": "Hokuto"
+   },
+   {
+    "q": "ロゴの色は何に決めましたか",
+    "a": "forest green"
+   },
+   {
+    "q": "オーブンの保証の期間",
+    "a": "one year"
+   }
+  ],
+  "unrelated": [
+   "量子もつれとブラックホールの関係",
+   "quantum entanglement near a black hole"
+  ]
+ }
+}

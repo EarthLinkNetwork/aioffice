@@ -1,0 +1,16 @@
+{
+  "reviewed_diff_sha256": "08f9e5065c396a0a33717111c6da43fb4c5e1205f2a06600da73ad430fcdd245",
+  "verdict": "passed",
+  "confirmed": 2,
+  "fixed": 2,
+  "reviewer": "independent-claude-agent(2 rounds); codex-required: not-required (2026-11-10.5・外した規則: なし)",
+  "reviewed_at": "2026-11-15T15:35:15+0900",
+  "coverage": {
+    "reviewed": [
+      ".github/workflows/package.yml・test/e2e/{image-no-proprietary.sh,launcher-negative.e2e.mjs,run-line.mjs} の全文・actionlint・bash -e の挙動の再現・前の run の log"
+    ],
+    "not_reviewed": [
+      "branch の保護（P2-2・承認済み・merge の後に入れる）・r1 の P3（action の SHA 固定・unit の lock・bundle の写しの検出・仕様 CI の 2/4/6/7）"
+    ]
+  }
+}

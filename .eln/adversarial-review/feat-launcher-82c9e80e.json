@@ -1,0 +1,16 @@
+{
+  "reviewed_diff_sha256": "463661f729022dca25fa8ab5b3b83effb2d6acbc433dde7acbbd9b5fc45ca178",
+  "verdict": "passed",
+  "confirmed": 9,
+  "fixed": 9,
+  "reviewer": "independent-claude-agent(6 rounds)+codex(3 rounds)",
+  "reviewed_at": "2026-11-15T15:26:44+0900",
+  "coverage": {
+    "reviewed": [
+      "packages/aioffice 全体（起動係 server.mjs・lib/{guard,state,paperclip,templates,i18n,codex-login}.mjs・public/setup.*・Dockerfile の 2 段の build・runtime の stub と許諾の一覧・bin）・test/launcher.test.mjs・test/e2e・docs/review/2026-11-15-launcher-scope.md。独立レビュー r1〜r6 approve・codex r1〜r3（r3 で design/impl とも approve）"
+    ],
+    "not_reviewed": [
+      "Paperclip 本体のコードの監査・各社の規約の本文（Cursor・Claude の部品は v1 では外した）・Windows の Docker Desktop での手の試し・独立レビュー r5 の P3-2〜P3-4（stop_timeout の文言・期限切れの経路の上書き・stop() の世代）は記録のまま"
+    ]
+  }
+}

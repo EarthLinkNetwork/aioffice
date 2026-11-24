@@ -1,0 +1,16 @@
+{
+  "reviewed_diff_sha256": "0271fe143ce9cf45b2c5d5a116be0ec0696e2c2a8c185bc6727f6eeecdbcaeeb",
+  "verdict": "passed",
+  "confirmed": 1,
+  "fixed": 1,
+  "reviewer": "workflow-independent-reviews(notify#213,plugin#10)",
+  "reviewed_at": "2026-11-14T04:51:53+0900",
+  "coverage": {
+    "reviewed": [
+      "仕様の 12 と口の形の PUT agents の companyId（通知 API と plugin の実装の独立レビューで、この形と照合して approve）"
+    ],
+    "not_reviewed": [
+      "仕様のほかの節（変更なし）"
+    ]
+  }
+}

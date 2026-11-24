@@ -1,0 +1,16 @@
+{
+  "reviewed_diff_sha256": "0e7d7f5648aea6a93e39df80b450def8e925d3a9c494f3f86887763e78959853",
+  "verdict": "passed",
+  "confirmed": 1,
+  "fixed": 1,
+  "reviewer": "independent-agent-r2",
+  "reviewed_at": "2026-11-13T13:04:05+0900",
+  "coverage": {
+    "reviewed": [
+      "apps/mobile の差分全体（App.tsx・Detail.tsx・decide.ts・ui.tsx・http.ts）と試験・範囲の文書（独立レビュー 2 回・r1 reject の P1 を直し r2 approve）"
+    ],
+    "not_reviewed": [
+      "実機での表示（TestFlight build 5 で確かめる）・画面の自動試験・codex（高リスクでないため使わない）"
+    ]
+  }
+}

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Office 結びつけの画面</title>
+<style>
+/* Paperclip 本体の page に入る plugin の画面（mobile plugin の「AI Office」）。色は本体の地の上で読める中間の色だけを使う */
+:root { --bg: #f7f8fa; --card: #fff; --ink: #18202b; --sub: #5d6878; --line: #dde2e8; --accent: #2c6bed; --accentInk: #fff; --warn: #b7791f; --ok: #2f8a57; --urgent: #d6452f; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #141922; --card: #1c2330; --ink: #e8edf4; --sub: #9aa6b6; --line: #2a3342; --accent: #5b8ff5; --accentInk: #0b1020; --warn: #e0a64a; --ok: #4fbf80; --urgent: #ff6b55; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg: #141922; --card: #1c2330; --ink: #e8edf4; --sub: #9aa6b6; --line: #2a3342; --accent: #5b8ff5; --accentInk: #0b1020; --warn: #e0a64a; --ok: #4fbf80; --urgent: #ff6b55; color-scheme: dark; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 system-ui, sans-serif; }
+.wrap { max-width: 720px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; }
+.views { display: flex; flex-wrap: wrap; gap: 6px; }
+.views button { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.views button[aria-pressed="true"] { background: var(--accent); color: var(--accentInk); border-color: var(--accent); }
+h1 { font-size: 20px; margin: 0; } .lead { color: var(--sub); margin: 0; }
+.sec { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 8px; }
+.sec h2 { font-size: 14px; margin: 0; }
+.btn { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 8px 14px; font-weight: 700; cursor: pointer; justify-self: start; }
+.btn.primary { background: var(--accent); color: var(--accentInk); border-color: var(--accent); }
+.btn.small { padding: 4px 10px; font-size: 12px; }
+.code { font: 700 24px/1.2 Menlo, monospace; letter-spacing: 3px; padding: 10px; border: 1px dashed var(--line); border-radius: 8px; text-align: center; }
+.sub { color: var(--sub); font-size: 12.5px; margin: 0; }
+.row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); } .row:last-child { border-bottom: 0; }
+.row .grow { flex: 1; min-width: 0; }
+.pill { font-size: 11px; border-radius: 999px; padding: 1px 8px; background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.alert { border-left: 3px solid var(--warn); padding-left: 10px; }
+.alert.lost { border-left-color: var(--urgent); }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.example { color: var(--sub); font-size: 11.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="views" role="group" aria-label="見本の状態">
+    <button data-v="start" aria-pressed="true">① つなぐ前</button>
+    <button data-v="code">② code を出した</button>
+    <button data-v="claimed">③ 名乗り出た</button>
+    <button data-v="linked">④ つないだ・判断は未承認</button>
+    <button data-v="pending">⑤ 承認の画面を開いた</button>
+    <button data-v="active">⑥ 判断も受けている</button>
+    <button data-v="expiring">⑦ 更新に失敗（期限が近い）</button>
+    <button data-v="lost">⑧ 切れた</button>
+  </div>
+  <h1>AI Office</h1>
+  <p class="lead">スマホのアプリとつなぐと、承認・判断カード・会社ごとの判断がスマホに届きます。</p>
+  <div id="body" style="display:grid;gap:12px"></div>
+  <p class="example">メールアドレスと code は見本。画面の人は Paperclip のログインで決まる（code を出した人だけが「つなぐ」を押せる）。</p>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const el = (t, a = {}, ...c) => { const e = document.createElement(t); for (const [k, v] of Object.entries(a)) k === 'onclick' ? e.addEventListener('click', v) : e.setAttribute(k, v); e.append(...c); return e; };
+const linkSec = v => {
+  if (v === 'start' || ['linked', 'pending', 'active', 'expiring', 'lost'].includes(v)) return el('div', { class: 'sec' }, el('h2', {}, 'スマホとつなぐ'),
+    el('p', { class: 'sub' }, 'アプリの「会社とつなぐ」に、ここで出す code を入れます。'), el('button', { class: 'btn primary', onclick: () => show('code') }, 'スマホとつなぐ'));
+  if (v === 'code') return el('div', { class: 'sec' }, el('h2', {}, 'スマホとつなぐ'), el('div', { class: 'code' }, 'K7QF-2M9X-RT4P'),
+    el('p', { class: 'sub' }, 'アプリの「会社とつなぐ」に入れてください。10 分で切れる・1 回だけ使える。'), el('p', { class: 'sub' }, 'アプリで入れられるのを待っています…'),
+    el('div', { class: 'actions' }, el('button', { class: 'btn', onclick: () => show('start') }, 'やめる')));
+  return el('div', { class: 'sec' }, el('h2', {}, 'スマホとつなぐ'), el('p', {}, 'アプリで ', el('b', {}, 'user@example.com'), ' が code を入れました。この人とつなぎますか。'),
+    el('p', { class: 'sub' }, 'メールアドレスが違う時は「断る」を押してください。code は使えなくなります。'),
+    el('div', { class: 'actions' }, el('button', { class: 'btn primary', onclick: () => show('linked') }, 'つなぐ'), el('button', { class: 'btn', onclick: () => show('start') }, '断る')));
+};
+const keySec = v => {
+  if (!['linked', 'pending', 'active', 'expiring', 'lost'].includes(v)) return null;
+  const btn = el('button', { class: 'btn primary', onclick: () => show('pending') }, '判断を受けるために承認する');
+  const body = {
+    linked: [el('p', {}, '会社ごとの判断（選択肢つきの判断）も受けるには、1 回承認が要ります。押すまでは承認・判断カードだけが届きます。'), btn],
+    pending: [el('p', {}, '承認の画面で「承認」を押してください。押すと 30 秒ほどで判断も届くようになります。'), el('div', { class: 'actions' }, el('button', { class: 'btn primary' }, '承認の画面を開く'), el('button', { class: 'btn', onclick: () => show('active') }, '（見本）承認した')), el('p', { class: 'sub' }, '10 分で切れたら、もう一度「判断を受けるために承認する」を押してください。')],
+    active: [el('p', {}, '判断も受けています。'), el('p', { class: 'sub' }, 'あと 23 日で自動で更新します。')],
+    expiring: [el('p', { class: 'alert' }, 'あと 3 日で判断を受けられなくなります。自動の更新に失敗しました。承認し直してください。'), btn],
+    lost: [el('p', { class: 'alert lost' }, '判断を受けるための承認が切れました。今は承認・判断カードだけが届いています。'), btn],
+  }[v];
+  return el('div', { class: 'sec' }, el('h2', {}, '判断を受ける'), ...body);
+};
+const listSec = v => {
+  const rows = ['linked', 'pending', 'active', 'expiring', 'lost'].includes(v) ? [['user@example.com', true], ['member@example.com', false]] : [['member@example.com', false]];
+  return el('div', { class: 'sec' }, el('h2', {}, 'つないでいるスマホ'),
+    ...rows.map(([m, mine]) => el('div', { class: 'row' }, el('span', { class: 'grow' }, m, ' ', mine ? el('span', { class: 'pill' }, 'あなた') : ''), el('button', { class: 'btn small' }, '外す'))),
+    el('p', { class: 'sub' }, '自分の分と、会社の管理者は全員の分を外せます。外すと、そのスマホにこの会社の件は届かなくなります。'),
+    el('p', { class: 'sub' }, '（管理者にだけ出る）この plugin を外す前に、全員の判断の承認を取り消してください（外すだけでは取り消されません）。'),
+    el('button', { class: 'btn small' }, '全員の判断の承認を取り消す'));
+};
+function show(v) {
+  document.querySelectorAll('.views button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+  $('#body').replaceChildren(...[linkSec(v), keySec(v), listSec(v)].filter(Boolean));
+}
+document.querySelectorAll('.views button').forEach(b => b.addEventListener('click', () => show(b.dataset.v)));
+show('start');
+</script>
+</body>
+</html>

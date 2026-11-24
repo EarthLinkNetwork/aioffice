@@ -1,0 +1,10 @@
+{
+  "name": "aioffice-runtime",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "image に焼き込む本体（Paperclip）と Codex CLI。版は package-lock.json で依存の依存まで固定し、image の中では lock を読む npm install で入れ、主な版を照合する（npm ci は入れ子の esbuild の optional が lock に載らず使えない）",
+  "dependencies": {
+    "paperclipai": "2026.1001.0",
+    "@openai/codex": "0.169.0"
+  }
+}

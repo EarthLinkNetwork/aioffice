@@ -1,0 +1,12 @@
+{
+  "name": "@aioffice/plugin-board",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "AI Office: the task board (list and Kanban, one-click filters) for each company, in English and Japanese.",
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js"
+  }
+}

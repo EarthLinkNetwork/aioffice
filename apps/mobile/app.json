@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "AI Office",
+    "slug": "aioffice",
+    "version": "1.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "jp.ne.eln.aioffice",
+      "buildNumber": "11",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      },
+      "entitlements": {
+        "aps-environment": "production"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "jp.ne.eln.aioffice"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "aioffice",
+    "plugins": [
+      "expo-font",
+      "expo-status-bar",
+      "./plugins/with-scene-lifecycle",
+      "expo-secure-store",
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "mode": "production",
+          "enableBackgroundRemoteNotifications": true
+        }
+      ]
+    ],
+    "extra": {
+      "notifyBaseUrl": "https://notify-admin-dev.eln.ne.jp"
+    }
+  }
+}

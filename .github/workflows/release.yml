@@ -1,0 +1,149 @@
+# 公開の版の image を ghcr.io/earthlinknetwork/aioffice に出す（範囲 docs/review/2026-11-17-public-release-scope.md の作り方 1-2・7）
+# 版の tag（v0.1.0 の形）を main の commit に付けた時だけ回る。
+#   gate → container（container.yml を publish で呼ぶ。試験を通した image そのものを :<版>-<arch> で出す・作り直さない）
+#   → publish（:<版> の multi-arch の index）→ smoke（environment: release の承認の後、ログインせずに digest で取って起動し英語の wizard を通す）
+#   → latest（ghcr の版の中で一番新しい版に :latest を付ける）
+name: release
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+concurrency:
+  group: release-${{ github.ref }}
+permissions:
+  contents: read
+env:
+  IMAGE: ghcr.io/earthlinknetwork/aioffice
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - name: 版の形と、tag の commit が main にあることを確かめる
+        id: v
+        run: |
+          echo "$GITHUB_REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "版の tag の形が違う: $GITHUB_REF_NAME"; exit 1; }
+          git fetch --no-tags "https://github.com/${GITHUB_REPOSITORY}.git" main
+          git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD || { echo "tag の commit が main にない"; exit 1; }
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+  container:
+    needs: gate
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/container.yml
+    with:
+      publish: true
+      version: ${{ needs.gate.outputs.version }}
+
+  publish:
+    needs: [gate, container]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.index.outputs.digest }}
+    steps:
+      - name: amd64 と arm64 を :<版> の 1 つの index にまとめる
+        id: index
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          # 「無い」と読むのは registry が not found を返した時だけ。読めない（一時の失敗・認証）時は止める
+          if out=$(docker buildx imagetools inspect "$IMAGE:$VERSION" 2>&1); then echo "$IMAGE:$VERSION はもう出ている（出した版は書き換えない）"; exit 1; fi
+          echo "$out" | grep -qiE 'not found|manifest unknown' || { echo "$IMAGE:$VERSION を読めない: $out"; exit 1; }
+          docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
+          digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$' || { echo "index の digest が読めない"; exit 1; }
+          # index の中の arch ごとの digest が、試験を通して push した :<版>-<arch> と同じであること
+          for a in amd64 arm64; do
+            want=$(docker buildx imagetools inspect "$IMAGE:$VERSION-$a" --format '{{json .Manifest.Digest}}' | tr -d '"')
+            got=$(docker buildx imagetools inspect "$IMAGE@$digest" --format '{{json .Manifest}}' | node -e "const m=JSON.parse(require('fs').readFileSync(0,'utf8'));const x=(m.manifests||[]).find(d=>d.platform&&d.platform.architecture==='$a');console.log(x?x.digest:'')")
+            [ -n "$want" ] && [ "$want" = "$got" ] || { echo "$a の digest が違う（push: $want・index: $got）"; exit 1; }
+          done
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+  smoke:
+    needs: [gate, publish]
+    # 最初の版は、組織の owner が package の設定画面で Public にしてから承認する（公開の設定を変える API が無い）
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      - name: ログインせずに digest で取り、記事の起動の 1 行で起動して英語の wizard を通す
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          # 利用者が打つ :<版> が、ログインせずに読めて、試した index と同じ digest を指す
+          got=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          [ "$got" = "$DIGEST" ] || { echo ":$VERSION の digest が違う（$got・試した物 $DIGEST）。package が Public か確かめる"; exit 1; }
+          docker pull "$IMAGE@$DIGEST"
+          # 記事の版の場所（組織の package のページ）が、ログインせずに開けてこの版が載っている
+          curl -fsSL "https://github.com/orgs/EarthLinkNetwork/packages/container/package/aioffice" | grep -qF "$VERSION" || { echo "package のページにこの版が無い"; exit 1; }
+          # RUN.txt の起動の行（記事と同じ・test/e2e/run-line.mjs）を、版の代わりに digest で回す
+          line=$(node test/e2e/run-line.mjs start "$VERSION" | sed "s|$IMAGE:$VERSION|$IMAGE@$DIGEST|")
+          echo "$line" | grep -qF "$IMAGE@$DIGEST" || { echo "RUN.txt の起動の行が読めない"; exit 1; }
+          eval "$line"
+          for i in $(seq 1 90); do
+            docker exec aioffice node -e "fetch('http://127.0.0.1:3101/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" 2>/dev/null && break
+            [ "$i" = 90 ] && { docker logs aioffice | tail -50; exit 1; }
+            sleep 2
+          done
+          mkdir -p "$RUNNER_TEMP/pw" && (cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null && npm install --no-audit --no-fund playwright@1.63.0 && npx playwright install --with-deps chromium)
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/pw/node_modules/playwright/index.mjs" AIO_BASE=http://localhost:3100 AIO_LANG=en AIO_SHOTS="$RUNNER_TEMP/shots" node test/e2e/launcher-wizard.e2e.mjs
+
+  latest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # smoke が両方通った自分の版が、ghcr の版の中で一番新しい時だけ :latest を付ける（smoke を通っていない版を latest にしない・保証 3）。
+    # 版によらず 1 つの group で順に回し、その中で ghcr を読み直す。近い時刻に 3 つ以上の版を出して待ちの run が取り消された時は、
+    # 一番新しい版の release の run の latest の job を手で回し直す（受け入れる限界）。
+    # 判定から付け替えまでの間に新しい版が出た時は、latest は一時的に前の版を指し、新しい版の latest の job が後から付け直す。
+    # publish をこの group に入れない（group は待ちを 1 つしか持てず、待ちの latest を publish が取り消しうる）
+    needs: [gate, publish, smoke]
+    concurrency:
+      group: release-latest
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: 自分の版が ghcr の版の中で一番新しい時だけ :latest を付ける
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          anon=$(curl -fsSL "https://ghcr.io/token?scope=repository:earthlinknetwork/aioffice:pull" | node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).token)")
+          top=$(curl -fsSL -H "Authorization: Bearer $anon" "https://ghcr.io/v2/earthlinknetwork/aioffice/tags/list?n=1000" \
+            | node -e "const t=JSON.parse(require('fs').readFileSync(0,'utf8')).tags||[];const v=t.filter(x=>/^\d+\.\d+\.\d+$/.test(x)).sort((a,b)=>{const p=a.split('.').map(Number),q=b.split('.').map(Number);return p[0]-q[0]||p[1]-q[1]||p[2]-q[2]});console.log(v.pop()||'')")
+          if [ "$top" != "$VERSION" ]; then echo "一番新しい版は $top なので latest は付け替えない"; exit 0; fi
+          echo "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          # 版の tag でなく、smoke が試した index の digest から付ける（smoke の後に :<版> が付け替えられても、試していない物を latest にしない）
+          echo "$DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$' || { echo "index の digest が無い"; exit 1; }
+          docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE@$DIGEST"
+          got=$(docker buildx imagetools inspect "$IMAGE:latest" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          [ "$got" = "$DIGEST" ] || { echo "latest の digest が違う（$got・試した物 $DIGEST）"; exit 1; }

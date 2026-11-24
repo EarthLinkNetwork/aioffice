@@ -1,0 +1,34 @@
+# 公開の package の試験（仕様 docs/design/2026-11-15-public-package.md「CI」の 1・3・5 の一部・範囲 docs/review/2026-11-17-public-release-scope.md）
+# 変更のたびに unit と、container の段（まっさらな container で英日の wizard・断られるべき要求・作り直しでデータが残る・amd64 と arm64）を回す。
+# container の段の中身は container.yml（release.yml も同じ物を呼び、試験を通した image そのものを出す）
+name: package
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+
+# runner: public の repo なので GitHub の runner（public は無料）だけを使う。組織の自前の runner の組は public の repo を断る設定で、
+# 自前の機械で外の人の PR のコードを動かさない（2026-11-17 の範囲・0.1.0 で public にした時に戻した）
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+
+  package:
+    uses: ./.github/workflows/container.yml
+    with:
+      publish: false

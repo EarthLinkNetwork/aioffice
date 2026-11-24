@@ -1,0 +1,16 @@
+{
+  "reviewed_diff_sha256": "85b191d573d5380711c1337d20df6da9e40bb173d0537b393876612675f5284e",
+  "verdict": "passed",
+  "confirmed": 2,
+  "fixed": 2,
+  "reviewer": "workflow-independent-review(plugin#10)",
+  "reviewed_at": "2026-11-14T04:53:33+0900",
+  "coverage": {
+    "reviewed": [
+      "plugins/mobile の chat.mjs・notify-client.mjs・manifest の権限・試験（workflow の独立レビューで reject の Blocking を直し approve・main を取り込んで 134 件通過）"
+    ],
+    "not_reviewed": [
+      "開発元のサーバーの Paperclip での実機（配備の後に確かめる）・codex（判定 not-required）"
+    ]
+  }
+}

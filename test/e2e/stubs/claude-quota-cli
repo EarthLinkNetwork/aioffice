@@ -1,0 +1,93 @@
+#!/usr/bin/env node
+// claude の CLI の代わり（AI の使用量の上限の e2e だけで使う・範囲 docs/review/2026-11-18-ai-usage-limit-scope.md（開発元の記録）の 7 の 10・8 節）。
+// 配る image には入れない（packages/aioffice/runtime/stubs には置かない）。CI で container にだけ docker cp で写し、担当の adapterConfig の command で指す。
+// 本体の claude_local（engine=cli）は `--print --output-format stream-json --verbose …` で呼び、prompt を stdin で渡し、stdout の行を run のログに残す。
+// - `--version`・`--help` に答える（本体の CLI の版の確かめ adapter-claude-local の execute.js:997・cli-capabilities.js の probe）
+// - それ以外は stream-json を出す: system init → rate_limit_event（形を選べる）→ assistant → result
+// - 上限の失敗（rejected）は result を `subtype:"success", is_error:true` と上限の文にし、exit 1。本体は describeClaudeFailure で
+//   「Claude run failed: subtype=success: You've hit your weekly limit · resets …」にし、CLAUDE_PROVIDER_QUOTA_RE で provider_quota に分ける（parse.js）
+// 出す形は、この file の横の claude-quota-cli.json（env AIO_STUB_CONFIG で別の path）か env で選ぶ。毎回読み直すので、run の間に替えられる:
+//   { mode, utilization, fiveHour, resetsAt, fiveHourResetsAt, runSeconds }
+//   mode: rejected（実測 3・4）| rejected_overage_allowed | allowed（utilization を指定）| allowed_warning | overage（isUsingOverage:true）|
+//         unknown_status | no_event（rate_limit_event の行が無い）| success（実測 5 の形のふつうの成功）| sleep（何も出さずに走るだけ・codex の代わり）
+//   utilization: 週の窓の 0〜1（既定 0.1）。fiveHour: 5 時間の窓の 0〜1（指定した時だけ five_hour の窓を足す）
+//   resetsAt: 週の窓の epoch 秒（既定 1795078800 = 2026-11-19T09:00:00Z・実測 4）。上限の文の「resets …」もこの値から作る
+//   runSeconds: rate_limit_event と assistant の行を出した後、result の前に走り続ける秒数（追加料金の印が出た長い run・既定 0）
+// env: AIO_STUB_MODE・AIO_STUB_UTILIZATION・AIO_STUB_FIVE_HOUR・AIO_STUB_RESETS_AT・AIO_STUB_RUN_SECONDS は file の値より先に使う
+// import も require も使わない（拡張子の無い file は、置き場の package.json の type で ESM にも CommonJS にもなる。node 24 の getBuiltinModule はどちらでも動く）
+const fs = process.getBuiltinModule('node:fs');
+const path = process.getBuiltinModule('node:path');
+const crypto = process.getBuiltinModule('node:crypto');
+
+const args = process.argv.slice(2);
+if (args.includes('--version')) { process.stdout.write('2.1.999 (Claude Code)\n'); process.exit(0); }
+if (args.includes('--help')) { process.stdout.write('Usage: claude [options]\n  --print\n  --output-format <format>\n  --verbose\n  --resume <id>\n  --model <model>\n  --effort <level>\n'); process.exit(0); }
+
+const self = (() => { try { return fs.realpathSync(process.argv[1]); } catch { return process.argv[1]; } })();
+const cfgPath = process.env.AIO_STUB_CONFIG || path.join(path.dirname(self), 'claude-quota-cli.json');
+let file = {};
+try { file = JSON.parse(fs.readFileSync(cfgPath, 'utf8')) || {}; } catch { file = {}; }
+const envNum = k => (process.env[k] != null && process.env[k] !== '' && Number.isFinite(Number(process.env[k])) ? Number(process.env[k]) : undefined);
+const numOr = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+const MODES = ['rejected', 'rejected_overage_allowed', 'allowed', 'allowed_warning', 'overage', 'unknown_status', 'no_event', 'success', 'sleep'];
+const cfg = {
+  mode: process.env.AIO_STUB_MODE || file.mode || 'success',
+  utilization: envNum('AIO_STUB_UTILIZATION') ?? numOr(file.utilization, 0.1),
+  fiveHour: envNum('AIO_STUB_FIVE_HOUR') ?? numOr(file.fiveHour, null),
+  resetsAt: envNum('AIO_STUB_RESETS_AT') ?? numOr(file.resetsAt, 1795078800),
+  fiveHourResetsAt: numOr(file.fiveHourResetsAt, null),
+  runSeconds: envNum('AIO_STUB_RUN_SECONDS') ?? numOr(file.runSeconds, 0),
+};
+if (!MODES.includes(cfg.mode)) { process.stderr.write(`stub: unknown mode ${cfg.mode}\n`); process.exit(2); }
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// prompt を読み切る（本体は stdin に prompt を書いて閉じる。閉じない時も 3 秒で先へ進む）
+async function drainStdin() {
+  if (process.stdin.isTTY) return;
+  await new Promise(resolve => {
+    const t = setTimeout(() => resolve(), 3000);
+    const done = () => { clearTimeout(t); resolve(); };
+    process.stdin.on('data', () => {}); process.stdin.on('end', done); process.stdin.on('error', done);
+  });
+}
+const out = o => new Promise(r => process.stdout.write(JSON.stringify(o) + '\n', () => r()));
+
+// 「resets Nov 19, 9am (UTC)」の形（実測 3）。分が 0 でない時は 9:05am
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function resetText(epochSec) {
+  const d = new Date(epochSec * 1000), h = d.getUTCHours(), m = d.getUTCMinutes();
+  const clock = `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`;
+  return `resets ${MON[d.getUTCMonth()]} ${d.getUTCDate()}, ${clock} (UTC)`;
+}
+const LIMIT_TEXT = `You've hit your weekly limit · ${resetText(cfg.resetsAt)}`;
+
+// rate_limit_event の rate_limit_info（実測 4・5 の欄の並び）
+function rateLimitInfo() {
+  const m = cfg.mode;
+  const status = m === 'rejected' || m === 'rejected_overage_allowed' ? 'rejected' : m === 'allowed_warning' ? 'allowed_warning' : m === 'unknown_status' ? 'mystery_state' : 'allowed';
+  const overageOn = m === 'overage' || m === 'rejected_overage_allowed';
+  const util = status === 'rejected' ? 1 : cfg.utilization;
+  const unifiedWindows = { seven_day: { utilization: util, resetsAt: cfg.resetsAt, status, ...(status === 'rejected' ? { surpassedThreshold: 1 } : {}) } };
+  if (cfg.fiveHour != null) unifiedWindows.five_hour = { utilization: cfg.fiveHour, resetsAt: cfg.fiveHourResetsAt ?? Math.min(cfg.resetsAt, Math.floor(Date.now() / 1000) + 3 * 3600), status: 'allowed' };
+  return {
+    status, resetsAt: cfg.resetsAt, rateLimitType: 'seven_day',
+    overageStatus: overageOn ? 'allowed' : 'rejected', ...(overageOn ? {} : { overageDisabledReason: 'org_level_disabled' }),
+    isUsingOverage: m === 'overage', unifiedWindows,
+  };
+}
+
+async function main() {
+  await drainStdin();
+  if (cfg.mode === 'sleep') { await sleep(Math.max(1, cfg.runSeconds) * 1000); process.exit(0); }
+  const sid = crypto.randomUUID();
+  await out({ type: 'system', subtype: 'init', session_id: sid, model: 'claude-quota-stub', cwd: process.cwd(), tools: [] });
+  if (cfg.mode !== 'no_event') await out({ type: 'rate_limit_event', rate_limit_info: rateLimitInfo(), uuid: crypto.randomUUID(), session_id: sid });
+  const rejected = cfg.mode === 'rejected';
+  const text = rejected ? LIMIT_TEXT : 'Stub run finished.';
+  await out({ type: 'assistant', session_id: sid, message: { id: `msg_${crypto.randomBytes(8).toString('hex')}`, role: 'assistant', model: 'claude-quota-stub', content: [{ type: 'text', text }] } });
+  if (cfg.runSeconds > 0) await sleep(cfg.runSeconds * 1000);
+  await out({ type: 'result', subtype: 'success', is_error: rejected, result: text, session_id: sid, total_cost_usd: 0, num_turns: 1, usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0 } });
+  process.exit(rejected ? 1 : 0);
+}
+process.on('SIGTERM', () => process.exit(143)); // 本体の cancel
+main().catch(e => { process.stderr.write(`stub failed: ${e?.message || e}\n`); process.exit(2); });

@@ -1,0 +1,9 @@
+{
+  "name": "@aioffice/plugin-mobile",
+  "version": "0.8.0",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "スマホアプリ向けの受信箱（汎用・他社にも配る）。判断待ちを card の型（v1）にして通知 API へ送り、押された操作を押した人の名義で反映する。アプリの話（担当とのチャット）を課題と comment で受け渡す。設計: README.md",
+  "paperclipPlugin": { "manifest": "./dist/manifest.js", "worker": "./dist/worker.js" }
+}

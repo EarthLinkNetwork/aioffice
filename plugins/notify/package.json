@@ -1,0 +1,9 @@
+{
+  "name": "@aioffice/plugin-notify",
+  "version": "0.4.0",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "AI Office notices: keeps one owner's list of approvals waiting, decisions waiting, failed runs and stuck tasks, plus a morning and evening summary.",
+  "paperclipPlugin": { "manifest": "./dist/manifest.js", "worker": "./dist/worker.js" }
+}

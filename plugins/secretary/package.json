@@ -1,0 +1,9 @@
+{
+  "name": "@aioffice/plugin-secretary",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "AI Office secretary rounds: once an hour the secretary looks over what happened, looks into what matters, and proposes what to check or do. The owner replies with a comment and the next round follows it.",
+  "paperclipPlugin": { "manifest": "./dist/manifest.js", "worker": "./dist/worker.js" }
+}

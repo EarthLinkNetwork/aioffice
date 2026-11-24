@@ -1,0 +1,81 @@
+# 公開の package の container の段（呼び出して使う workflow・範囲 docs/review/2026-11-17-public-release-scope.md の作り方 1-1・7-1）
+# まっさらな container を RUN.txt と同じ行で起動し、wizard を英語と日本語で通し、断られるべき要求が断られ、
+# 止めて起こしても・container を作り直してもデータが残ることを、amd64 と arm64 の両方で確かめる。
+# publish が true の時（release.yml の版の tag）だけ、試験を通した image そのものを :<版>-<arch> で ghcr に push する（作り直さない）。
+# permissions は書かない（呼び出し側の権限を受け継ぐ。書くと release の push が 403 になるか、読むだけの呼び出しが起動の時点で断られる）
+name: container
+on:
+  workflow_call:
+    inputs:
+      publish: { type: boolean, default: false }
+      version: { type: string, default: '' }
+
+jobs:
+  container:
+    name: container (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240 # AI の使用量の上限の e2e が英日で各 25〜45 分（見回りを 1 分ごとに回し、再試行の 70 秒・期限の 150 秒を待つ）。GitHub の runner の 4 core で収まるかは 0.1.0 の初回で測る
+    env:
+      # PR の event の github.sha は main と合わせた commit なので、PR の head そのものを試す
+      TAG: ci-${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      # GitHub の runner では段を host で直に回すので、e2e の node を 24 にそろえる
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      # 移し替えと戻しの e2e（test/e2e/migrate-auth.e2e.mjs）のため、前の版（ログインの無い形）の source を取り出す。commit は test/e2e/migrate-from.sha に固定する
+      # その commit は親の無い 1 commit（前の版の木だけ・履歴なし）で、tag test/migrate-from に置く（repo を 1 commit の履歴で作り直した時・2026-11-25）
+      - name: 前の版の source
+        run: |
+          ref=$(tr -d '[:space:]' < test/e2e/migrate-from.sha)
+          git fetch --no-tags --depth=1 "https://github.com/${GITHUB_REPOSITORY}.git" "$ref"
+          git archive --format=tar "$ref" > "$RUNNER_TEMP/old-src.tar"
+      # 埋め込みの部品（Ollama と bge-m3・約 2.6GB）は取得の script の hash を key に cache する。版を出す時は cache を使わず、固定の hash で取り直す（作り方 5）
+      - name: 埋め込みの部品の cache
+        if: ${{ !inputs.publish }}
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/embed.tar
+          key: embed-tar-${{ matrix.arch }}-${{ hashFiles('packages/aioffice/embed/fetch-embed.sh') }}
+      # 段の中身は test/e2e/container-stage.sh（GitHub の runner では host で直に回す・test/e2e/ci-isolated.sh の頭の注記）
+      - name: build・許諾・英日の e2e・作り直し・網なし
+        # exec: 取り消しの SIGINT・SIGTERM を runner は step の shell にだけ送るので、script をその shell と入れ替える
+        run: exec bash test/e2e/ci-isolated.sh ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        continue-on-error: true # 画面は確かめの補助。Actions の保存の枠が尽きても段の結果を変えない
+        with:
+          name: wizard-shots-${{ matrix.arch }}
+          path: shots/
+          if-no-files-found: ignore
+      # 試験を通した image そのものを出す。出した版は書き換えない（同じ版の 2 回目の push は止める・保証 2）
+      # digest は matrix の job の出力にしない（もう一方の arch の空の値で上書きされうる）。次の publish の job が ghcr から読む
+      - name: 試験を通した image を push する
+        if: ${{ inputs.publish }}
+        env:
+          VERSION: ${{ inputs.version }}
+          ARCH: ${{ matrix.arch }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IMAGE=ghcr.io/earthlinknetwork/aioffice
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "版の形が違う: $VERSION"; exit 1; }
+          echo "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          # ログインの後に見る（package が private の間は、ログインしないと有る版も無いと読める）
+          # 「無い」と読むのは registry が not found を返した時だけ。読めない（一時の失敗・認証）時は止める
+          for t in "$VERSION" "$VERSION-$ARCH"; do
+            if out=$(docker buildx imagetools inspect "$IMAGE:$t" 2>&1); then echo "$IMAGE:$t はもう出ている（出した版は書き換えない）"; exit 1; fi
+            echo "$out" | grep -qiE 'not found|manifest unknown' || { echo "$IMAGE:$t を読めない: $out"; exit 1; }
+          done
+          docker tag "$IMAGE:$TAG" "$IMAGE:$VERSION-$ARCH"
+          docker push "$IMAGE:$VERSION-$ARCH"
+          docker logout ghcr.io

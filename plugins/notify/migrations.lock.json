@@ -1,0 +1,8 @@
+{
+  "001_init.sql": "bfcd740a408d09812a29aaa42404ca2cf8f6ac6e9fd07b15de0f769d58a9888a",
+  "002_event_agent.sql": "adcf2994deab52ee45179d10266b059a563f366b05b46a680a92ca50c2173acd",
+  "003_notice_body.sql": "b6f4178ad0c865af90bf0e5d856d035dbbfe71b1cfdf2ffd41437e40e56685ce",
+  "004_slack.sql": "325af4dcbe7ab4516180e5584bc9a4bc305a2cce4b8a2434a858f95cc46f6ffc",
+  "005_ai_limits.sql": "1feda3a598f830805b7c2fff2390a180de36f5aa8d9074e956eb4e76e702e052",
+  "006_mail.sql": "001042ff612947e33a59cdfdf8f63bd22ddb3d89f52b8d02ca474fc6a42a0f5a"
+}

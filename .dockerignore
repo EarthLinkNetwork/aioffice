@@ -1,0 +1,25 @@
+# image に入れるのは packages/aioffice と、plugins の下の許した plugin の元だけ（ほかは build に送らない）
+*
+!packages/aioffice/launcher
+!packages/aioffice/templates
+!packages/aioffice/bin
+!packages/aioffice/RUN.txt
+!packages/aioffice/runtime/package.json
+!packages/aioffice/runtime/package-lock.json
+!packages/aioffice/runtime/stubs
+!packages/aioffice/runtime/notices.mjs
+!packages/aioffice/runtime/fixes
+!packages/aioffice/embed/fetch-embed.sh
+!LICENSE
+!package.json
+!package-lock.json
+!plugins/build.mjs
+!plugins/owner-gate.mjs
+!plugins/office
+!plugins/design
+!plugins/notify
+!plugins/library
+!plugins/secretary
+!plugins/relay
+plugins/*/dist
+plugins/*/node_modules
