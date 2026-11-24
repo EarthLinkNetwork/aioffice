@@ -38,6 +38,9 @@ export function createPaperclip({ base, fetchFn = fetch }) {
     // 担当は選んだ AI の adapter で作る（既定は Codex）。adapterConfig は wizard の AI の表の既定（ai-catalog.mjs）。ACP では担当が本体の API に毎回つながらなかったので CLI の経路にする（自社の運用 2026-11-04）
     createAgent: (companyId, { name, title, role = 'general', adapterType = 'codex_local', adapterConfig = { engine: 'cli' } }) => call('POST', `/api/companies/${companyId}/agents`, { name, title, role, adapterType, adapterConfig }),
     updateAgent: (agentId, patch) => call('PATCH', `/api/agents/${agentId}`, patch),
+    // 担当の指示書（AGENTS.md）を読む・書く。置き場は adapterConfig.instructionsFilePath と同じファイル（社内の実物で長さが一致・2026-11-25）
+    instructionsFile: agentId => call('GET', `/api/agents/${agentId}/instructions-bundle/file?path=AGENTS.md`),
+    putInstructionsFile: (agentId, content) => call('PUT', `/api/agents/${agentId}/instructions-bundle/file`, { path: 'AGENTS.md', content }),
     adapters: () => call('GET', '/api/adapters'),
     // 会社の秘密を作る。値は応答に返らない形で本体が持つ（Claude の token など）
     createSecret: (companyId, { name, key, value }) => call('POST', `/api/companies/${companyId}/secrets`, { name, key, value }),

@@ -13,6 +13,7 @@ import { hostAllowed, originAllowed, schemeOf, baseOf, issueCookie, readCookie, 
 import { parseDeviceOutput, createCodexLogin } from '../packages/aioffice/launcher/lib/codex-login.mjs';
 import { DICT } from '../packages/aioffice/launcher/lib/i18n.mjs';
 import { TEMPLATES, templateText } from '../packages/aioffice/launcher/lib/templates.mjs';
+import { upsertCase, caseText, CASE_MARK } from '../packages/aioffice/launcher/lib/case-format.mjs';
 import { BRIEF_MARK } from '../plugins/library/src/lib.mjs';
 import { openStore, volumeMounted } from '../packages/aioffice/launcher/lib/state.mjs';
 import { createLauncher } from '../packages/aioffice/launcher/server.mjs';
@@ -186,6 +187,12 @@ function fakePaperclip(dir, { delayMs = 0 } = {}) {
       if (req.method === 'POST' && req.url === '/api/companies') { const c = { id: `c${companies.length + 1}`, name: JSON.parse(b).name, issuePrefix: 'ACM' }; companies.push(c); return setTimeout(() => json(201, c), delayMs); }
       const m = req.url.match(/^\/api\/companies\/([^/]+)\/agents$/);
       if (req.method === 'POST' && m) { const a = { id: `a${agents.length + 1}`, ...JSON.parse(b), adapterConfig: { ...JSON.parse(b).adapterConfig, instructionsFilePath: path.join(dir, `a${agents.length + 1}`, 'AGENTS.md') } }; agents.push(a); return setTimeout(() => json(201, a), delayMs); }
+      // 判断の書き方を揃える口（launcher/lib/case-format.mjs）: 会社と担当の一覧・指示書の読み書き（置き場は instructionsFilePath と同じファイル）
+      if (req.method === 'GET' && req.url === '/api/companies') return json(200, companies);
+      if (req.method === 'GET' && m) return json(200, agents.filter(a => !m[1] || companies.some(c => c.id === m[1])));
+      const f = req.url.match(/^\/api\/agents\/([^/]+)\/instructions-bundle\/file(\?path=AGENTS\.md)?$/), fa = f && agents.find(a => a.id === f[1]);
+      if (f && fa && req.method === 'GET') { try { return json(200, { content: fs.readFileSync(fa.adapterConfig.instructionsFilePath, 'utf8') }); } catch { return json(404, { error: 'nf' }); } }
+      if (f && fa && req.method === 'PUT') { fs.writeFileSync(fa.adapterConfig.instructionsFilePath, JSON.parse(b).content); return json(200, {}); }
       if (req.url === '/hello') return json(200, { from: 'paperclip' });
       if (req.url === '/hold') return holds.push(() => json(200, { held: true })); // 書き込みの関所の試験: 放すまで返さない
       // 本体が版上げで CORS の header を返し始めた時の形（範囲の保証 8 の否定の試験）
@@ -243,7 +250,7 @@ test('wizard の通し（偽の本体）: 守り → 言語 → 持ち主 → �
     await req(port, 'POST', '/setup/api/company', { body: { name: 'Again' }, cookie }); assert.equal(pc.companies.length, 1, 'あれば使う（2 社目を作らない）');
     s = (await req(port, 'POST', '/setup/api/secretary', { body: { name: '' }, cookie })).json;
     assert.equal(s.secretaryId, 'a1'); assert.equal(pc.agents[0].name, '秘書'); assert.equal(pc.agents[0].adapterType, 'codex_local'); assert.equal(pc.agents[0].adapterConfig.engine, 'cli', '担当は CLI の経路');
-    assert.equal(fs.readFileSync(pc.agents[0].adapterConfig.instructionsFilePath, 'utf8'), templateText('secretary', 'ja'), '秘書の指示書（日本語）を書く');
+    assert.equal(fs.readFileSync(pc.agents[0].adapterConfig.instructionsFilePath, 'utf8'), upsertCase(templateText('secretary', 'ja'), caseText('ja')), '秘書の指示書（日本語）を書き、判断の書き方の節を足す');
     assert.deepEqual(s.templates.map(x => x.id), ['design', 'research']);
     assert.deepEqual(s.noInstructions, [], '指示書は書けた');
     assert.equal(pc.calls.every(c => c.host === `127.0.0.1:${pcPort}`), true, '本体へは loopback の Host で呼ぶ');
@@ -256,6 +263,7 @@ test('wizard の通し（偽の本体）: 守り → 言語 → 持ち主 → �
     s = (await req(port, 'POST', '/setup/api/agents', { body: { ids: ['design', 'secretary', 'nope', '__proto__'] }, cookie })).json;
     assert.deepEqual(Object.keys(s.agents), ['design']); assert.equal(pc.agents.length, 2); assert.equal(pc.agents[1].name, 'デザイン課');
     await req(port, 'POST', '/setup/api/agents', { body: { ids: ['design'] }, cookie }); assert.equal(pc.agents.length, 2, '同じ担当を 2 人作らない');
+    for (const a of pc.agents) assert.equal(fs.readFileSync(a.adapterConfig.instructionsFilePath, 'utf8').split(CASE_MARK.begin).length - 1, 1, `${a.name}: 担当を足す道を 2 回たどっても、判断の書き方の節は 1 回だけ`);
 
     assert.equal((await req(port, 'GET', '/hello', { cookie })).status, 302, '完了の前は本体へ通さない');
     assert.equal((await upgrade(port, { cookie })).includes('401'), true, '完了の前は WebSocket も通さない');

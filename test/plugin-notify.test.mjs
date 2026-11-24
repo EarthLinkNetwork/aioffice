@@ -315,6 +315,12 @@ test('知らせの文の秘密の形を伏せる・普通の文は変えない',
   assert.ok(KEY_PATTERNS.length >= 7, '移す元（ops/rag/rag-lib.mjs）の 7 つの形を減らさない');
   assert.equal(redactSecrets('Decision waiting: X-1 Pick a logo color'), 'Decision waiting: X-1 Pick a logo color');
   assert.equal(redactSecrets('判断待ち: 色を選ぶ'), '判断待ち: 色を選ぶ');
+  // ID（UUID）は頭や末尾が数字だけでも伏せない。口座番号などの数字だけの並びは今までどおり伏せる
+  for (const id of ['36725280-eb09-4173-b1f7-a5ca987bfc86', 'd99b7b2e-1531-436f-8d39-123456789012', 'D99B7B2E-1531-436F-8D39-E883A64CF59E']) {
+    assert.equal(redactSecrets(`cancelled: ${id}`), `cancelled: ${id}`, id);
+  }
+  assert.equal(redactSecrets('acct 12345678 and run 36725280-eb09-4173-b1f7-a5ca987bfc86'), 'acct [hidden] and run 36725280-eb09-4173-b1f7-a5ca987bfc86');
+  assert.equal(redactSecrets('tel 090-12345678'), 'tel 090-[hidden]');
 });
 test('表への書き込みで題を伏せる・突き合わせは種類を絞って上限なしで読む・片付けは 3 本', async () => {
   const calls = [];

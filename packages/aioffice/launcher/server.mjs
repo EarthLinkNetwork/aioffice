@@ -17,6 +17,7 @@ import { aiChoices, aiBin, aiHome, deskAdapterConfig, swapAdapterConfig, catalog
 import { createDeviceLogin } from './lib/device-login.mjs';
 import { createPaperclip, writeInstructions } from './lib/paperclip.mjs';
 import { TEMPLATES, templateText } from './lib/templates.mjs';
+import { syncCaseFormat } from './lib/case-format.mjs';
 import { DICT, pickLang } from './lib/i18n.mjs';
 import { createGate, WRITE_METHODS } from './lib/gate.mjs';
 // isLoopback は下の Slack の物（127.0.0.0/8・::1）を、試験の口（TEST_HOOK_PATH）にも使う
@@ -481,7 +482,12 @@ export function createLauncher({ roleWriter = null, relayMailKeep = 5000, dataDi
       noInstructions: s.noInstructions || [], templates: Object.entries(TEMPLATES).filter(([, t]) => !t.required).map(([id, t]) => ({ id, name: t.name[lang], title: t.title[lang], added: !!s.agents[id] })) };
   }
 
-  async function createDesk(id, name, aiType = 'codex_local') {
+  // 担当づくり（作る → 役の指示書を書く → 揃える）と、判断の書き方を揃える処理は 1 本の列で順に回す。
+  // 重なると、揃える処理が役の指示書を書く前の中身で全文を書き戻し、役の本文が消えうる（実装レビュー P3-1）
+  let caseChain = Promise.resolve();
+  const serial = fn => { const p = caseChain.then(fn, fn); caseChain = p.catch(() => {}); return p; };
+  const createDesk = (...args) => serial(() => createDeskNow(...args));
+  async function createDeskNow(id, name, aiType = 'codex_local') {
     const s = store.get(), lang = pickLang(s.lang), t = TEMPLATES[id];
     // Codex は前の版と同じ形（engine cli）。ほかの AI は表の既定で、Claude は env で token の秘密を指す（割り当て直しと同じ関数）
     const key = keyFor(aiType);
@@ -492,7 +498,16 @@ export function createLauncher({ roleWriter = null, relayMailKeep = 5000, dataDi
     store.update(x => { x.agentAi = { ...(x.agentAi || {}), [id]: aiType }; });
     let ok = false; try { ok = writeInstructions(agent, templateText(id, lang)); } catch (e) { console.log(`aioffice: could not write instructions for ${id}: ${e.code || e.message}`); }
     if (!ok) store.update(x => { x.noInstructions = [...new Set([...(x.noInstructions || []), id])]; }); // 完了の画面で知らせる // 担当はできているので、覚えずにやり直して 2 人目を作ることはしない
+    await runCaseSync(); // 判断の書き方を、足した担当を含む全部の AI の担当に揃える（失敗しても担当づくりは止めない）
     return agent.id;
+  }
+
+  // 判断の書き方（templates/case-format.*.md）を会社の全部の AI の担当の指示書に揃える（範囲 docs/review/2026-11-25-case-format-in-public-scope.md）。
+  // 起動の後に 1 回（見回りの毎分が、成功するまで呼ぶ）と、担当を足した時。同じ本文の担当には書かない。成功で true
+  const syncCase = () => serial(runCaseSync);
+  async function runCaseSync() {
+    try { const r = await syncCaseFormat(pc, { lang: pickLang(store.get().lang), log: m => console.log(m) }); if (r.insert || r.replace || r.failed) console.log(`aioffice: case-format insert ${r.insert} replace ${r.replace} same ${r.same} failed ${r.failed}`); return r.failed === 0; }
+    catch (e) { console.log(`aioffice: case-format sync failed: ${String(e?.message || e).slice(0, 200)}`); return false; }
   }
 
   const running = new Map(); // 段ごとに、作っている途中の Promise を 1 つだけ持つ
@@ -1107,7 +1122,7 @@ export function createLauncher({ roleWriter = null, relayMailKeep = 5000, dataDi
     }
     return out;
   }
-  return { server, store, codex, mail, checkKey, syncRelay, relayMail, keyless: () => !boardKey || !boardKey.has() || keyBad || migratingNow() };
+  return { server, store, codex, mail, checkKey, syncRelay, relayMail, syncCase, keyless: () => !boardKey || !boardKey.has() || keyBad || migratingNow() };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

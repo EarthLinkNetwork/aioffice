@@ -276,7 +276,8 @@ export function redactSecrets(text) {
   for (const re of KEY_PATTERNS) s = s.replace(re, '[hidden]');
   s = s.replace(NAME_RULE, (_, n, sep, v) => { const q = v[0] === '"' || v[0] === "'" ? v[0] : ''; return `${n}${sep}${q}[hidden]${q}`; });
   s = s.replace(/(\b[a-z][a-z0-9+.-]*:\/\/)([^\s/:@]+):([^\s/@]+)@/gi, '$1$2:[hidden]@'); // URL の user:pass@
-  return s.replace(/(?<![0-9A-Za-z])[0-9]{7,}(?![0-9A-Za-z])/g, '[hidden]'); // 7 桁以上の数字（口座番号など）
+  // 7 桁以上の数字（口座番号など）。ID（UUID）の中の数字だけの区切りは伏せない（頭の 8 桁が数字だけの id が「[hidden]-…」になり、どの run か読めなくなった）
+  return s.replace(/(?<![0-9A-Za-z-])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9A-Za-z-])|(?<![0-9A-Za-z])[0-9]{7,}(?![0-9A-Za-z])/gi, m => (m.includes('-') ? m : '[hidden]'));
 }
 // 片付けの決まり（知らせが際限なく溜まらない・独立レビュー P2-4）: 失敗とまとめは、読んだら 7 日・読まなくても 14 日で消す。
 // 突き合わせで持つ種類（承認・判断待ち・止まった課題・失敗の続き）は、元が片付いた時だけ消す（読んだ物を消すと次の回に未読で戻るため・2 回目のレビュー P2-A）

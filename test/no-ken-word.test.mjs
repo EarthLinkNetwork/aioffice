@@ -39,7 +39,7 @@ test('知らせ・アプリ・秘書の文の文字列に名詞の「件」が�
 // kit は公開の package の外なので、ある時だけ見る（公開の写しでは飛ばす）
 const KIT = new URL('../../kit/', import.meta.url);
 let kitFiles = [];
-try { kitFiles = ['case-format.md', ...readdirSync(new URL('agents/', KIT)).filter(f => f.endsWith('.md')).map(f => `agents/${f}`)]; } catch { /* 公開の写し */ }
+try { kitFiles = [...readdirSync(new URL('agents/', KIT)).filter(f => f.endsWith('.md')).map(f => `agents/${f}`)]; } catch { /* 公開の写し */ }
 test('担当の指示書（kit）に名詞の「件」が無い', { skip: kitFiles.length === 0 }, () => {
   const bad = [];
   for (const f of kitFiles) {

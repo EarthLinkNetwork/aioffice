@@ -85,6 +85,7 @@ function restartPaperclip() {
 const limits = createLimitsCollector({ fetchFn: pcFetch, pcUrl: `http://127.0.0.1:${PC_PORT}`, getState: () => store.get(), updateState: fn => store.update(fn), overrides: limitOverrides });
 rounds = createRounds({ fetchFn: pcFetch, pcUrl: `http://127.0.0.1:${PC_PORT}`, dataDir: `${DATA}/aioffice`, getState: () => store.get(), installed: () => Object.keys(plugins.readRecord()), ready: () => Object.entries(plugins.readRecord()).filter(([, v]) => v.status === 'ready').map(([k]) => k), limits, mail });
 let relayMailBusy = false;
+let caseSynced = false, caseBusy = false, caseTries = 0; // 判断の書き方を揃えるのは起動の後に成功するまで（範囲 docs/review/2026-11-25-case-format-in-public-scope.md）
 const roundsTimer = setInterval(() => {
   // 鍵が断られたら（401・403・admin でない）、見回りを止め、本体を scheduler を止めて起こし直す（設計 2.3・保証 7）
   launcher.checkKey().then(bad => { if (bad) restartPaperclip(); }, () => {});
@@ -94,6 +95,8 @@ const roundsTimer = setInterval(() => {
   launcher.syncRelay().catch(e => console.log(`aioffice: plugin config sync failed: ${String(e?.message || e).slice(0, 200)}`))
     .then(() => { if (relayMailBusy) return; relayMailBusy = true; return launcher.relayMail().catch(e => console.log(`aioffice: relay mail failed: ${String(e?.message || e).slice(0, 200)}`)).finally(() => { relayMailBusy = false; }); });
   rounds.maybeRun().catch(e => console.log(`aioffice: rounds failed: ${e?.message || e}`));
+  // 失敗し続ける時は 10 回で止め、次の起動か担当を足した時に回す（毎分の全部の読み直しを終わらせる・実装レビュー P3-3）
+  if (!caseSynced && !caseBusy && caseTries < 10 && store.get().done) { caseBusy = true; caseTries++; launcher.syncCase().then(ok => { caseSynced = ok; if (!ok && caseTries >= 10) console.log('aioffice: case-format sync gave up until the next start'); }).finally(() => { caseBusy = false; }); }
 }, 60_000);
 server.listen(PORT, '0.0.0.0', () => console.log(`aioffice: open http://localhost:${PORT}/ in your browser`)); // 外へは docker の -p 127.0.0.1:… で手元だけに出す
 startPaperclip();
