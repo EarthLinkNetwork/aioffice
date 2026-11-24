@@ -45,8 +45,8 @@ const MESSAGES: Record<string, string> = {
   'invalid-action': 'この操作はできません',
   'binding-not-found': 'この結びつけは見つかりません',
   'binding-not-active': 'この会社とはまだつながっていません',
-  'card-not-found': 'この件はもうありません',
-  'action-already-pending': 'この件は送信済みです。反映まで少し待ってください',
+  'card-not-found': 'この判断はもうありません',
+  'action-already-pending': 'この判断は送信済みです。反映まで少し待ってください',
   'invalid-body': '送る中身が正しくありません。アプリを新しくしてください',
   'thread-not-found': 'この話は見つかりません',
   'agent-not-found': 'この担当は見つかりません',
@@ -253,7 +253,7 @@ export function createHttpClient(opts: HttpClientOptions): HttpClient {
     },
     async act(card, actionId, values): Promise<ActResult> {
       const bindingId = card.bindingId;
-      if (!bindingId) return fail('この件の結びつけが分かりません');
+      if (!bindingId) return fail('この判断の結びつけが分かりません');
       // 押した操作は、通信の失敗・応答の無さも必ず画面に出す文にする（例外にすると画面は何も出さず固まる）
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), opts.actTimeoutMs ?? 20_000);
@@ -269,7 +269,7 @@ export function createHttpClient(opts: HttpClientOptions): HttpClient {
     },
     async markSeen(card): Promise<ActResult> {
       const bindingId = card.bindingId;
-      if (!bindingId) return fail('この件の結びつけが分かりません');
+      if (!bindingId) return fail('この判断の結びつけが分かりません');
       return guarded(async () => {
         const r = await call('POST', `/bindings/${bid(bindingId)}/cards/${bid(card.id)}/seen`, {});
         return r.status === 200 ? { ok: true } : fail(msg(r, '見たにできませんでした'));

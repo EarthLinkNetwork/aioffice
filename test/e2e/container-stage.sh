@@ -36,8 +36,10 @@ STEP_EOF
 )"
 step '起動を待つ道具' "$(cat <<'STEP_EOF'
 cat > "$RUNNER_TEMP/wait.sh" <<'SH'
+# 本体（3101）の health に加えて、起動係（3100）が本体を読めて stage が starting でなくなるまで待つ
+# （本体の health が通った直後は起動の後の回復の途中で、起動係が stage を starting として言語の口に 401 を返すことがある・2026-11-25 の GitHub の arm64 の runner）
 for i in $(seq 1 90); do
-  docker exec aioffice node -e "fetch('http://127.0.0.1:3101/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" 2>/dev/null && exit 0
+  docker exec aioffice node -e "fetch('http://127.0.0.1:3101/api/health').then(r=>r.ok?fetch('http://127.0.0.1:3100/setup/api/state',{headers:{host:'localhost:3100'}}):Promise.reject()).then(r=>r.ok?r.json():Promise.reject()).then(s=>process.exit(s.stage!=='starting'?0:1),()=>process.exit(1))" 2>/dev/null && exit 0
   sleep 2
 done
 docker logs aioffice | tail -50; exit 1

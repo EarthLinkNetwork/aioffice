@@ -56,7 +56,12 @@ export function mergeMessages(cur: ChatMessage[], add: ChatMessage[]): ChatMessa
 export const lastAt = (messages: ChatMessage[]): string | undefined => messages[messages.length - 1]?.at;
 
 // ---- 判断の件の「決められない — 担当と話す」（仕様 10）
-export const CARD_PREFIX = '判断の件から: ';
+export const CARD_PREFIX = '判断カードから: ';
+// 前の版のアプリが書いた印（読むだけ。書くのは CARD_PREFIX）
+export const CARD_PREFIX_OLD = '判断の件から: ';
+export const isCardStart = (text: string): boolean => text.startsWith(CARD_PREFIX) || text.startsWith(CARD_PREFIX_OLD);
+// 画面に出す時は前の印を今の印にする（前の版で始めた話の題・札。保存された記録は書き換えない）
+export const showCardText = (text: string): string => text.startsWith(CARD_PREFIX_OLD) ? `${CARD_PREFIX}${text.slice(CARD_PREFIX_OLD.length)}` : text;
 export const DEFAULT_ASK = 'まだ決められません。決めるのを手伝ってください。';
 
 // 最初の発言: 件の題・要約・詳細（本文の先頭）・選択肢（説明し直さなくてよいように）。最初の行は ④ の札と話の題になる。
@@ -79,10 +84,11 @@ export function cardOfThread(cards: Card[], threadId: string | null, local: Map<
   return cards.find(c => c.thread?.id === threadId || local.get(c.id)?.threadId === threadId) ?? null;
 }
 
-// ④ の上の札（判断の件から始めた話なら、最初の発言の 1 行目）
+// ④ の上の札（判断カードから始めた話なら、最初の発言の 1 行目）。前の版の印で始めた話も、札は今の印で出す
 export function cardChip(messages: ChatMessage[]): string | null {
   const first = messages[0];
-  return first?.role === 'me' && first.text.startsWith(CARD_PREFIX) ? first.text.split('\n')[0] : null;
+  if (first?.role !== 'me' || !isCardStart(first.text)) return null;
+  return showCardText(first.text.split('\n')[0]);
 }
 
 const allAgents = (d: AgentDirectory | null): ChatAgent[] => (d?.departments ?? []).flatMap(x => x.agents);
@@ -99,7 +105,7 @@ export type CardChatResult = { ok: true; threadId: string; thread: Thread; agent
 // cardId つきで新しい話を作る。開く話と担当を返す（失敗は画面に出す文）
 export async function startCardChat(client: Pick<NotifyClient, 'chatAgents' | 'createThread'>, card: Card, said = ''): Promise<CardChatResult> {
   const bindingId = card.bindingId;
-  if (!bindingId) return { ok: false, message: 'この件の結びつけが分かりません' };
+  if (!bindingId) return { ok: false, message: 'この判断の結びつけが分かりません' };
   let d: AgentDirectory;
   try { d = await client.chatAgents(bindingId); } catch { return { ok: false, message: '担当の一覧を読めませんでした。もう一度押してください' }; }
   const agent = cardAgent(card, d);

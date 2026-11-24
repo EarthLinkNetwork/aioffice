@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { createNotifyClient, NOTIFY_API } from '../plugins/mobile/src/notify-client.mjs';
 import { createDecisionsClient, DECISION_PATHS } from '../plugins/mobile/src/decisions-client.mjs';
-import { createRelay, cardVersion, ACTION_TTL_MS, companyOfCardKey, cardKeyOf, kindOfCardKey } from '../plugins/mobile/src/relay.mjs';
+import { createRelay, cardVersion, ACTION_TTL_MS, companyOfCardKey, cardKeyOf, kindOfCardKey, stoppedRows } from '../plugins/mobile/src/relay.mjs';
 
 const KEY = 'project-key-for-test-0123456789';
 const CO = 'co1';
@@ -82,7 +82,8 @@ function fakeCtx() {
   const k = x => `${x.scopeKind}|${x.scopeId}|${x.namespace}|${x.stateKey}`;
   const h = { approvals: [], interactions: [], issues: [{ id: 'is1', status: 'in_progress' }], members: [], decideCalls: [], respondCalls: [], logs: [], decideThrows: false, comments: {}, written: [], wakes: [], agents: [{ id: 'g1', name: '事務担当' }], company: { id: CO, name: '見本の会社' } };
   const ctx = {
-    state: { get: async x => structuredClone(state.get(k(x))), set: async (x, v) => { state.set(k(x), structuredClone(v)); } },
+    // 本体と同じく、値に null・undefined は書けない（2026-11-25 実物で止まりの状態に null を書いて sync が落ちた）
+    state: { get: async x => structuredClone(state.get(k(x))), set: async (x, v) => { if (v == null) throw new Error('state value must not be null'); state.set(k(x), structuredClone(v)); } },
     logger: { warn: (m, meta) => h.logs.push(JSON.stringify([m, meta])), info: (m, meta) => h.logs.push(JSON.stringify([m, meta])) },
     access: { members: { list: async () => h.members } },
     companies: { get: async () => h.company },
@@ -600,7 +601,7 @@ test('送る card: お金・外への送信の件は本文を要約に入れな�
   h.approvals.push(approval('a1', '返信の承認', { payload: { title: '返信の承認', replyBody: '秘密の本文' } }));
   await relay.syncCompany(CO);
   const card = srv.s.cards.get(`${b1}|approval:co1:a1`).card;
-  assert.equal(card.summary, '見本の会社 · 事務担当\n（外への送信の件です。開いて確かめてください）');
+  assert.equal(card.summary, '見本の会社 · 事務担当\n（外への送信に関わる判断です。開いて確かめてください）');
   assert.ok(!card.summary.includes('秘密の本文'));
   assert.deepEqual(card.actions.map(a => a.id), ['approve', 'reject']); // approval に共通の操作は付けない
 });
@@ -656,7 +657,7 @@ test('要約: 承認の項目（field）は要約に使わない・本文に金�
   const field = decorate({ kind: 'approval', risk: 'internal', summary: '', sections: [{ kind: 'field', label: 'details', text: '見積 300000' }], actions: [] }, { companyName: 'A' });
   assert.equal(field.summary, 'A');
   const money = decorate({ kind: 'decision', risk: 'internal', summary: '', sections: [{ kind: 'body', text: '見積は ¥300,000 です' }], actions: [] }, { companyName: 'A' });
-  assert.equal(money.summary, 'A\n（お金の件です。開いて確かめてください）');
+  assert.equal(money.summary, 'A\n（お金に関わる判断です。開いて確かめてください）');
 });
 
 test('話のコメントが読めない回は前の回の結論を使い、送る版を変えない', async () => {
@@ -923,7 +924,7 @@ test('件カード: 推奨で進める・取り下げる・どれでもない �
   await relay.pollActions(CO);
   assert.deepEqual(srv.s.moved, [
     { issueId: 'c1', user: 'u1', status: 'todo', comment: '推奨のとおりに進めてください。' },
-    { issueId: 'c2', user: 'u1', status: 'cancelled', comment: 'この件は取り下げます。進めないでください。\n理由: 今期は見送ります' },
+    { issueId: 'c2', user: 'u1', status: 'cancelled', comment: 'このタスクは取り下げます。進めないでください。\n理由: 今期は見送ります' },
     { issueId: 'c3', user: 'u1', status: 'todo', comment: 'どれでもない: B 社も見てください' },
   ]);
   assert.deepEqual([...srv.s.results.values()], [{ ok: true }, { ok: true }, { ok: true }]);
@@ -1092,4 +1093,78 @@ test('件カード: 前の版の印（casePrimed）が残っていても、直�
   h.issues.push(caseIssue('c1')); h.comments.c1 = [agentSays('m1', CASE_BODY)];
   await relay.syncCompany(CO);
   assert.deepEqual(srv.s.puts.filter(p => p.cid.includes(':case.')).map(p => p.push), [false]);
+});
+
+// ---- 担当が止まっているお知らせ（範囲 docs/review/2026-11-25-app-agent-stopped-notice-scope.md） ----
+const STOP = 'interaction:co1:stopped.agents';
+const guardErr = { status: 'error', errorReason: 'AI Office guard: ChatGPT plan の利用枠が上限に近いため Codex を起動しません (token=abc /home/x)' };
+
+test('止まり: kindOfCardKey が stopped を見分け、cardKeyOf が interaction の頭で作る', () => {
+  assert.equal(cardKeyOf('stopped', CO, 'agents'), STOP);
+  assert.equal(kindOfCardKey(STOP), 'stopped');
+  assert.equal(companyOfCardKey(STOP), CO);
+});
+
+test('止まり: error と 3 日以内の paused だけを数え、理由は決まった語・理由と名前の順に並べる', () => {
+  const rows = stoppedRows([
+    { name: '経理', ...guardErr },
+    { name: 'Admin', status: 'error', errorReason: 'spawn E2BIG' },
+    { name: '秘書', ...guardErr },
+    { name: '昔の担当', status: 'paused', pausedAt: '2026-11-20T00:00:00Z' },
+    { name: '総務', status: 'paused', pausedAt: '2026-11-24T00:00:00Z' },
+    { name: '開発', status: 'idle' },
+    { name: '辞めた', status: 'terminated' },
+  ], Date.parse('2026-11-25T00:00:00Z'));
+  assert.deepEqual(rows, [
+    { name: '秘書', reason: 'AI の利用枠の守り' }, { name: '経理', reason: 'AI の利用枠の守り' },
+    { name: 'Admin', reason: 'エラー' }, { name: '総務', reason: '止めています' },
+  ]);
+});
+
+test('止まり: 出す・error の文は載せない・同じ日は push し直さない・翌日に 1 回催促・2 回続けて 0 人で消す', async () => {
+  const b1 = await bind('u1'); const b2 = await bind('u2');
+  await relay.syncCompany(CO); // 入れた最初の回（止まりなし）で専用の初回の印が立つ
+  h.agents = [{ id: 'g1', name: '秘書', ...guardErr }, { id: 'g2', name: 'Mail', ...guardErr }];
+  await relay.syncCompany(CO);
+  let puts = srv.s.puts.filter(p => p.cid === STOP);
+  assert.deepEqual(puts.map(p => [p.bid, p.push]).sort(), [[b1, true], [b2, true]], '止まりの始まりに全員へ 1 回 push');
+  const card = srv.s.cards.get(`${b1}|${STOP}`).card;
+  assert.equal(card.title, '担当 2 人が止まっています');
+  assert.doesNotMatch(JSON.stringify(card), /token=abc|\/home\/x|AI Office guard/, 'error の文は載せない');
+  assert.match(JSON.stringify(card), /Mail（AI の利用枠の守り）/);
+  await relay.syncCompany(CO);
+  assert.equal(srv.s.puts.filter(p => p.cid === STOP).length, 2, '中身が同じ回は送り直さない');
+  h.agents.push({ id: 'g3', name: '経理', status: 'error', errorReason: 'x' });
+  await relay.syncCompany(CO);
+  puts = srv.s.puts.filter(p => p.cid === STOP);
+  assert.deepEqual(puts.slice(2).map(p => p.push), [false, false], '同じ日に増えても push しない（中身だけ送り直す）');
+  clock += 24 * 60 * 60 * 1000;
+  await relay.syncCompany(CO); await relay.syncCompany(CO);
+  puts = srv.s.puts.filter(p => p.cid === STOP);
+  assert.deepEqual(puts.slice(4).map(p => p.push), [true, true], '翌日に全員へ 1 回だけ催促');
+  h.agents = [{ id: 'g1', name: '秘書', status: 'idle' }];
+  await relay.syncCompany(CO);
+  assert.ok(srv.s.cards.has(`${b1}|${STOP}`), '1 回の 0 人では残る');
+  h.agents = [{ id: 'g1', name: '秘書', ...guardErr }];
+  await relay.syncCompany(CO);
+  assert.equal(srv.s.puts.filter(p => p.cid === STOP && p.push).length, 4, '揺れで戻っても push し直さない');
+  h.agents = [{ id: 'g1', name: '秘書', status: 'idle' }];
+  await relay.syncCompany(CO); await relay.syncCompany(CO);
+  assert.ok(!srv.s.cards.has(`${b1}|${STOP}`) && !srv.s.cards.has(`${b2}|${STOP}`), '2 回続けて 0 人で消える');
+  h.agents = [{ id: 'g1', name: '秘書', ...guardErr }];
+  await relay.syncCompany(CO);
+  assert.deepEqual(srv.s.puts.filter(p => p.cid === STOP).slice(-2).map(p => p.push), [true, true], '次の止まりは新しい始まりとして push');
+});
+
+test('止まり: 入れた最初の回からもう止まっている時は push しない・担当の一覧が読めない回は消さない', async () => {
+  const b1 = await bind('u1');
+  h.agents = [{ id: 'g1', name: '秘書', ...guardErr }];
+  await relay.syncCompany(CO);
+  assert.deepEqual(srv.s.puts.filter(p => p.cid === STOP).map(p => p.push), [false]);
+  const list = ctx.agents.list;
+  ctx.agents.list = async () => { throw new Error('down'); };
+  await relay.syncCompany(CO); await relay.syncCompany(CO); await relay.syncCompany(CO);
+  assert.ok(srv.s.cards.has(`${b1}|${STOP}`), '読めない回は何回でも消さない');
+  assert.equal(srv.s.deletes.filter(d => d.cid === STOP).length, 0);
+  ctx.agents.list = list;
 });

@@ -201,15 +201,35 @@ const clip = (t, n) => (t.length <= n ? t : `${t.slice(0, n - 1)}…`);
 export function summaryLineOf(base) {
   const own = oneLine(base.summary);
   if (own) return { text: clip(own, 2000), derived: false };
-  if (base.risk && base.risk !== 'internal') return { text: `（${RISK_WORD[base.risk] || '確かめの要る'}の件です。開いて確かめてください）`, derived: true };
+  if (base.risk && base.risk !== 'internal') return { text: `（${RISK_WORD[base.risk] || '確かめの要る'}に関わる判断です。開いて確かめてください）`, derived: true };
   // 本文の節（kind 'body'）だけを使う。承認の項目（field）や送る本文（outgoing）は使わない。金額の形があれば伏せる（ロック画面に出るため）
   const first = (base.sections || []).filter(x => x?.kind === 'body').map(x => oneLine(x?.text)).find(Boolean) || '';
-  if (first && AMOUNT_RE.test(first)) return { text: '（お金の件です。開いて確かめてください）', derived: true };
+  if (first && AMOUNT_RE.test(first)) return { text: '（お金に関わる判断です。開いて確かめてください）', derived: true };
   return { text: clip(first, SUMMARY_MAX), derived: !!first };
 }
 
 // 日本時間の「HH:MM」（同じ入力なら同じ出力）
 const jstHm = ms => { const d = new Date(ms + 9 * 3600 * 1000); return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
+// 担当が止まっているお知らせ（範囲 docs/review/2026-11-25-app-agent-stopped-notice-scope.md 保証 5）。
+// 担当の error の文は載せず、決まった理由の語だけ。題は push の本文にもなる（名前・理由は載せない）
+export const STOPPED_SHOWN_MAX = 10;
+export function stoppedCard({ rows, since, companyName, day = null }) {
+  const list = Array.isArray(rows) ? rows : [];
+  const shown = list.slice(0, STOPPED_SHOWN_MAX).map(r => `${str(r.name, 80)}（${r.reason}）`);
+  const more = list.length - shown.length;
+  const co = companyName ? `${str(companyName, 120)} の` : 'この会社の';
+  const steps = { kind: 'steps', label: 'すること', text: 'オフィスの担当の画面で理由を見てください。利用枠の時は、枠が戻ると自動で動きます' };
+  const who = { kind: 'body', label: '止まっている担当', text: [...shown, ...(more > 0 ? [`ほか ${more} 人`] : [])].join('\n') };
+  return {
+    v: 1, id: 'stopped:agents', kind: 'notice', risk: 'internal', title: `担当 ${list.length} 人が止まっています`,
+    summary: `${co}担当が止まっています${since ? `（${jstClock(since)} から）` : ''}。止まっている間は仕事が進みません。`, recommendation: '',
+    options: [], deadline: null, sections: [who, steps], links: [], createdAt: null, requestedBy: null, actions: [],
+    // 日本時間の日。閉じても翌日は版が変わって受信箱に戻る（片付くまで毎日 1 回出す・裁定 L9a308154）
+    day: typeof day === 'string' ? day : null,
+  };
+}
+const jstClock = ms => { const d = new Date(Number(ms) + 9 * 3600 * 1000).toISOString(); return `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))} ${d.slice(11, 16)}`; };
+
 export const jstDay = ms => new Date(ms + 9 * 3600 * 1000).toISOString().slice(0, 10);
 
 export function commonActionsOf(base) {

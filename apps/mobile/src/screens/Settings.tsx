@@ -43,7 +43,7 @@ export function Settings({ client, me, onBind, onSignOut, onToast }: { client: N
   const save = async (p: Prefs) => { setPrefs(p); await client.setPrefs(p); };
   const unbind = async (b: Binding) => {
     const r = await client.unbind(b.id);
-    const msg = r.ok ? `${b.company} を外した。この会社の件はこの端末に届かなくなる` : r.message;
+    const msg = r.ok ? `${b.company} を外した。この会社の知らせはこの端末に届かなくなる` : r.message;
     if (r.ok) setBindings(bs => bs.filter(x => x.id !== b.id)); // 読み直しが失敗しても、外した会社は一覧から消す
     onToast(msg); load(msg);
   };

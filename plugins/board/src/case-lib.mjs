@@ -1,7 +1,12 @@
 // 件のページの計算（担当の書いた文から「概要・決めてほしい事・私なら・なぜなら…」を取り出す・会話の並び）。画面も API も持たない。
 // 設計: docs/design/2026-11-24-secretary-conversation-kanban.md §4.1。見出しの語は i18n.mjs の case_h_*（英語と日本語のどちらで書かれていても読む）
 
-export const SECTIONS = ['summary', 'ask', 'rec', 'why', 'evidence', 'did', 'notdid'];
+export const SECTIONS = ['summary', 'ask', 'rec', 'why', 'evidence', 'did', 'notdid', 'split'];
+// 「サブタスクの案」の節の箇条（担当が「分けた方がよい事」を書いた物）。押した物だけがサブタスクになる
+export const SPLIT_MAX = 8;
+export function splitIdeas(text) {
+  return String(text ?? '').split(/\r?\n/).map(l => l.replace(/^\s*(?:[-*・]|\d{1,2}[.)])\s*/, '').trim()).filter(l => l && l.length <= 160).slice(0, SPLIT_MAX);
+}
 export const SECTION_MAX = 4000;
 
 // DICT から見出しの語の表を作る: { summary: ['summary', '概要'], … }（小文字・前後の空白なし）
@@ -166,3 +171,128 @@ export const canDrop = (r, c) => !!r && !!c && !c.failed && r.column !== 'blocke
 export const dropPatch = comment => ({ status: 'cancelled', comment: String(comment || '') });
 // 本体の返事で、取り消しになった事を確かめる
 export const dropDone = res => (res?.issue || res)?.status === 'cancelled';
+
+// ── サブタスクと会話の画面（会話の画面の標準 docs/design/2026-11-25-chat-screen-standard.md・モック docs/mocks/case-subtasks.html）
+// 3-1: 最初に出す発言の数。古い物は「前の n 個の発言を見る」で読み足す
+export const FIRST_MESSAGES = 20;
+export const firstShown = (count, shown) => Math.max(0, Number(count || 0) - Math.max(0, Number(shown || 0)));
+
+// 子孫の課題（descendantOf で読んだ物）を、すぐ下の子と、その下の数に分ける。取り消した課題は数えない
+export function subtaskTree(rootId, issues) {
+  const live = (issues || []).filter(i => i && i.id && i.status !== 'cancelled' && String(i.id) !== String(rootId));
+  const kidsOf = id => live.filter(i => String(i.parentId || '') === String(id));
+  const below = id => kidsOf(id).flatMap(k => [k, ...below(k.id)]);
+  const kids = kidsOf(rootId).sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+  return {
+    kids: kids.map(k => { const b = below(k.id); return { issue: k, below: b.length, belowDone: b.filter(x => x.status === 'done').length }; }),
+    done: kids.filter(k => k.status === 'done').length,
+    all: below(rootId).length,
+  };
+}
+
+// 5-2・5-3: PC は Enter で送る（Shift+Enter は改行・日本語の変換を確定する Enter では送らない）。携帯は改行キーで改行し、送るボタンだけで送る
+export const enterSends = (e, touch) => !touch && e?.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229;
+
+// 5-4: 添付の上限（本体の既定と同じ 10MB・1 回に 8 個まで）
+export const ATTACH_MAX_BYTES = 10 * 1024 * 1024;
+export const ATTACH_MAX_FILES = 8;
+// 足す物のうち、受けられる物と断る物（大きすぎ・空・数の超過）に分ける
+export function attachSplit(current, adding) {
+  const ok = [], ng = [];
+  for (const f of adding || []) {
+    if (!f || !(f.size > 0)) ng.push({ name: f?.name || '', why: 'empty' });
+    else if (f.size > ATTACH_MAX_BYTES) ng.push({ name: f.name, why: 'big' });
+    else if ((current?.length || 0) + ok.length >= ATTACH_MAX_FILES) ng.push({ name: f.name, why: 'many' });
+    else ok.push(f);
+  }
+  return { ok, ng };
+}
+// 送る文に、添付した物の名前を足す（担当が課題の添付と結び付けられるように）
+export function withAttachNote(body, names, label) {
+  const list = (names || []).filter(Boolean);
+  const text = String(body || '').trim();
+  if (!list.length) return text;
+  return `${text}${text ? '\n\n' : ''}${label} ${list.join('、')}`;
+}
+
+// 「完了にして親に返す」: 子は完了にして決まった事を書き、親の会話に「サブタスク『題』が完了: 決まった事」を書く
+export const RESULT_MAX = 1000;
+export function checkResult(raw) {
+  const v = String(raw ?? '').trim();
+  if (!v) return { ok: false, why: 'empty' };
+  if (v.length > RESULT_MAX) return { ok: false, why: 'long' };
+  return { ok: true, body: v };
+}
+export const childDonePatch = (label, result) => ({ status: 'done', comment: `${label} ${String(result || '').trim()}` });
+export const parentNote = (template, title, result) => String(template).replace(/\{title\}|\{result\}/g, m => (m === '{title}' ? String(title) : String(result)));
+
+// 3-3: 担当の書いた Markdown を、HTML を通さずに描くための塊に分ける（見出し・箇条・番号・引用・表・コード・段落）。
+// 文字は全部「文字」として扱い、画面は React の要素で組み立てる（担当の文を HTML として解釈しない）
+export function mdBlocks(text) {
+  const out = [], lines = String(text ?? '').replace(/\r/g, '').split('\n');
+  let i = 0;
+  const isTable = l => /^\s*\|.*\|\s*$/.test(l);
+  const cells = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+  while (i < lines.length) {
+    const l = lines[i];
+    const fence = /^\s{0,3}(```|~~~)/.exec(l);
+    if (fence) { const body = []; i++; while (i < lines.length && !lines[i].trim().startsWith(fence[1])) body.push(lines[i++]); i++; out.push({ type: 'code', text: body.join('\n') }); continue; }
+    if (!l.trim()) { i++; continue; }
+    const hd = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(l);
+    if (hd) { out.push({ type: 'h', level: hd[1].length, text: hd[2].replace(/\s+#+\s*$/, '') }); i++; continue; }
+    if (isTable(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
+      const rows = [cells(l)]; i += 2; while (i < lines.length && isTable(lines[i])) rows.push(cells(lines[i++]));
+      out.push({ type: 'table', rows }); continue;
+    }
+    const bullet = /^\s*(?:[-*+・])\s+(.*)$/, num = /^\s*\d{1,3}[.)]\s+(.*)$/;
+    if (bullet.test(l) || num.test(l)) {
+      const kind = bullet.test(l) ? 'ul' : 'ol', re = kind === 'ul' ? bullet : num, items = [];
+      while (i < lines.length && re.test(lines[i])) items.push(re.exec(lines[i++])[1]);
+      out.push({ type: kind, items }); continue;
+    }
+    if (/^\s*>\s?/.test(l)) { const q = []; while (i < lines.length && /^\s*>\s?/.test(lines[i])) q.push(lines[i++].replace(/^\s*>\s?/, '')); out.push({ type: 'quote', text: q.join('\n') }); continue; }
+    const p = []; while (i < lines.length && lines[i].trim() && !/^\s{0,3}(```|~~~|#{1,6}\s)/.test(lines[i]) && !bullet.test(lines[i]) && !num.test(lines[i]) && !/^\s*>/.test(lines[i]) && !isTable(lines[i])) p.push(lines[i++]);
+    out.push({ type: 'p', text: p.join('\n') });
+  }
+  return out;
+}
+// 行の中の **太字** と `コード` を分ける（ほかの記号は文字のまま）
+export function mdInline(text) {
+  const out = [], re = /\*\*([^*\n]+)\*\*|`([^`\n]+)`/g; let last = 0, m;
+  const s = String(text ?? '');
+  while ((m = re.exec(s))) { if (m.index > last) out.push({ t: 'text', v: s.slice(last, m.index) }); out.push(m[1] != null ? { t: 'b', v: m[1] } : { t: 'code', v: m[2] }); last = re.lastIndex; }
+  if (last < s.length) out.push({ t: 'text', v: s.slice(last) });
+  return out;
+}
+
+// 3-4: 時刻（HH:mm）と日付の区切り（今日・昨日・月日）
+export const hhmm = at => { const d = new Date(at); return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+export function dayKey(at) { const d = new Date(at); return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
+export function dayLabel(at, now, words) {
+  const d = new Date(at); if (Number.isNaN(d.getTime())) return '';
+  const n = new Date(now), y = new Date(n.getFullYear(), n.getMonth(), n.getDate() - 1);
+  if (dayKey(d) === dayKey(n)) return words.today;
+  if (dayKey(d) === dayKey(y)) return words.yesterday;
+  return String(words.date).replace('{m}', String(d.getMonth() + 1)).replace('{d}', String(d.getDate())).replace('{y}', String(d.getFullYear()));
+}
+
+// 2-1: 未読の区切り。開いた時点の既読の時刻より後の、自分以外の最初の発言の id（区切りは開いている間は動かさない）
+export function firstUnread(chat, readAt) {
+  if (!readAt) return null;
+  const hit = (chat || []).find(m => m.who !== 'me' && String(m.at || '') > String(readAt));
+  return hit ? hit.id : null;
+}
+// 3-1 と 2-2: 表示の始まりを id で持つ（新しい発言が来ても、上の発言を消さない）。見つからなければ新しい方の n 個
+export function startIndex(chat, startId, first = FIRST_MESSAGES) {
+  const at = startId ? (chat || []).findIndex(m => m.id === startId) : -1;
+  return at >= 0 ? at : Math.max(0, (chat?.length || 0) - first);
+}
+
+// 1-1: タスクのページの高さ。画面の高さから、ページの上端と、画面の下に固定された外の物（本体の携帯の下のメニューなど）を除く。
+// covers は画面の下端に重なっている固定の物の上端（px）の並び。どれも無ければ画面の下端まで使う
+export const PAGE_MIN_H = 320;
+export function fitHeight({ viewH, top, covers = [] }) {
+  const tops = covers.filter(x => Number.isFinite(x) && x > 0 && x < viewH);
+  const bottom = Math.min(viewH, ...tops);
+  return Math.max(PAGE_MIN_H, Math.floor(bottom - Math.max(0, top || 0) - 8));
+}

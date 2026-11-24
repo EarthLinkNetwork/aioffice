@@ -8,7 +8,7 @@
 //   key の無い人には、その人の受信箱にだけ「承認が要ります」のお知らせ（押す操作なし・push しない）を置く
 // 状態は plugin の状態（会社ごと・namespace mobile）に置く。key・通知 API のキーはログ・戻り値に出さない。
 import { createHash } from 'node:crypto';
-import { approvalToCard, decisionToCard, interactionToCard, caseToCard, CASE_ACTIONS, keyNoticeCard, INTERACTION_KINDS, QUESTION_OTHER, DEFAULT_SEND_KEYS, decorate, conclusionOf, isCommonAction, AIO, jstDay } from './cards.mjs';
+import { approvalToCard, decisionToCard, interactionToCard, caseToCard, CASE_ACTIONS, keyNoticeCard, stoppedCard, INTERACTION_KINDS, QUESTION_OTHER, DEFAULT_SEND_KEYS, decorate, conclusionOf, isCommonAction, AIO, jstDay } from './cards.mjs';
 import { pickCase, headingTable } from '../../board/src/case-lib.mjs';
 import { DICT } from '../../office/src/i18n.mjs';
 import { KEY_TTL_MS } from './host-auth-client.mjs';
@@ -42,9 +42,25 @@ export const cardVersion = card => createHash('sha256').update(JSON.stringify(so
 // 件カードの id は `interaction:<会社>:case.<課題の id>`。通知 API が受け付ける id の頭は approval・interaction・decision の 3 つだけ（ELN Platform の notify の MOBILE_CARD_KINDS）なので、
 // 判断カードの頭を借り、plugin の中でだけ種類（case）を見分ける。本体の interaction の id は uuid で、`case.` では始まらない
 // key の無い人へのお知らせ（notice）も同じ理由で、`interaction:<会社>:notice.<user の id>` にする（`notice:` で始めると 400 で断られ、1 枚も届いていなかった）
-export const cardKeyOf = (kind, companyId, id) => (kind === 'case' || kind === 'notice' ? `interaction:${companyId}:${kind}.${id}` : `${kind}:${companyId}:${id}`);
+export const cardKeyOf = (kind, companyId, id) => (kind === 'case' || kind === 'notice' || kind === 'stopped' ? `interaction:${companyId}:${kind}.${id}` : `${kind}:${companyId}:${id}`);
 // card の id から plugin の中の種類を取り出す
-export const kindOfCardKey = key => { const m = String(key).match(/^interaction:[^:]+:(case|notice)\./); return m ? m[1] : String(key).split(':')[0]; };
+export const kindOfCardKey = key => { const m = String(key).match(/^interaction:[^:]+:(case|notice|stopped)\./); return m ? m[1] : String(key).split(':')[0]; };
+// 止まっている担当（範囲 docs/review/2026-11-25-app-agent-stopped-notice-scope.md の「言葉」と保証 5）:
+// error の担当と、pausedAt が 3 日以内の paused の担当。理由は決まった語だけ（error の文は出さない）。理由・名前の順に並べる
+export const STOPPED_PAUSE_DAYS = 3;
+const STOPPED_REASON_ORDER = ['AI の利用枠の守り', 'エラー', '止めています'];
+export function stoppedRows(agents, nowMs) {
+  const rows = [];
+  for (const a of Array.isArray(agents) ? agents : []) {
+    if (!a || typeof a !== 'object') continue;
+    if (a.status === 'error') rows.push({ name: String(a.name || ''), reason: /^AI Office guard:/.test(String(a.errorReason || '')) ? 'AI の利用枠の守り' : 'エラー' });
+    else if (a.status === 'paused') {
+      const at = Date.parse(a.pausedAt || '');
+      if (Number.isFinite(at) && nowMs - at <= STOPPED_PAUSE_DAYS * DAY_MS) rows.push({ name: String(a.name || ''), reason: '止めています' });
+    }
+  }
+  return rows.sort((x, y) => STOPPED_REASON_ORDER.indexOf(x.reason) - STOPPED_REASON_ORDER.indexOf(y.reason) || (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
+}
 // card の id から会社の id を取り出す（形が違えば null）
 export const companyOfCardKey = cardId => {
   const m = typeof cardId === 'string' ? cardId.match(/^(approval|interaction|decision|notice):([^:]+):./) : null;
@@ -175,11 +191,11 @@ export function createRelay({ ctx, notifyFor, decisionsFor = async () => null, h
 
   // 飾りの材料（会社と担当の名前・その人の話・話の結論・「最新にする」の時刻）を 1 回の送りの分だけ読む。
   // 名前は最後に読めた値を残し、読めない回もそれを使う（読みの揺れで送る版を変えない）
-  async function lookups(companyId, items, sent = {}) {
+  async function lookups(companyId, items, sent = {}, agentsRead = null) {
     const names = await st.get(companyId, 'names', { company: null, agents: {} });
     const co = await ctx.companies?.get?.(companyId).catch(() => null);
     if (co?.name) names.company = co.name;
-    const agents = await ctx.agents?.list?.({ companyId, limit: 500 }).catch(() => null);
+    const agents = agentsRead || await ctx.agents?.list?.({ companyId, limit: 500 }).catch(() => null);
     if (Array.isArray(agents)) for (const a of agents) if (a?.id && a?.name) names.agents[a.id] = a.name;
     const threads = await st.get(companyId, 'cardThreads', {}); // 書くのは chat.mjs だけ（ここは読むだけ）
     const refreshing = await st.get(companyId, 'refreshing', {});
@@ -259,7 +275,26 @@ export function createRelay({ ctx, notifyFor, decisionsFor = async () => null, h
         }
       }
       ok.add('notice'); sure.add('notice');
-      const look = await lookups(companyId, items, sent);
+      // 担当が止まっているお知らせ（範囲 2026-11-25-app-agent-stopped-notice 保証 1〜7）。一覧は 1 回だけ読み、名前の飾りにも使う
+      let agentsRead = null;
+      try { const a = await ctx.agents?.list?.({ companyId, limit: 500 }); if (Array.isArray(a)) agentsRead = a; } catch { /* 読めない回 */ }
+      const stoppedKey = cardKeyOf('stopped', companyId, 'agents');
+      const stoppedState = (await st.get(companyId, 'stopped', null)) || {};
+      const stoppedPrimed = !!(await st.get(companyId, 'stoppedPrimed', false));
+      const today = jstDay(now());
+      if (agentsRead) {
+        ok.add('stopped'); // sure には入れない（1 回の 0 人では消さない・MISSES_TO_RESOLVE に任せる）
+        const rows = stoppedRows(agentsRead, now());
+        if (rows.length) {
+          if (!stoppedState.since) stoppedState.since = now();
+          const co = await ctx.companies?.get?.(companyId).catch(() => null);
+          // push は止まりの始まりと、日本時間の日が変わった最初の回だけ（専用の初回の印が立つ前は出さない）
+          const pushNow = stoppedPrimed && stoppedState.pushedDay !== today;
+          stoppedState.pushedDay = today;
+          items.push({ kind: 'stopped', id: 'agents', push: pushNow, card: stoppedCard({ rows, since: stoppedState.since, companyName: co?.name || null, day: today }) });
+        }
+      }
+      const look = await lookups(companyId, items, sent, agentsRead);
       // 判断と質問は、答えに会社ごとの key が要るので key を持つ人だけ。宛先のある質問は宛先の人だけ
       const recipientsOf = it => (it.only ? it.only : active.filter(([, b]) => (it.kind !== 'decision' && it.kind !== 'case' && !it.question) || validKey(keys, b.userId))
         .filter(([, b]) => !it.addressee || b.userId === it.addressee).map(([bid]) => bid));
@@ -287,7 +322,7 @@ export function createRelay({ ctx, notifyFor, decisionsFor = async () => null, h
           if (had && prevR[bid] === version) { nextR[bid] = version; continue; }
           // push するのは、入れた後に新しく出た件だけ（初回・中身の更新・後から結びついた人・key を承認した時点で open の判断には push しない）
           const k = it.kind === 'decision' ? validKey(keys, bindings[bid].userId) : null;
-          const push = primed && isNew && it.kind !== 'notice' && (it.kind !== 'case' || casePrimed) && (it.kind !== 'decision' || !k?.grantedAt || Date.parse(it.createdAt || 0) >= Date.parse(k.grantedAt));
+          const push = it.kind === 'stopped' ? !!it.push : primed && isNew && it.kind !== 'notice' && (it.kind !== 'case' || casePrimed) && (it.kind !== 'decision' || !k?.grantedAt || Date.parse(it.createdAt || 0) >= Date.parse(k.grantedAt));
           try {
             await notify.putCard({ bindingId: bid, cardId: key, version, push, card });
             nextR[bid] = version; stats.put++; if (push) stats.pushed++;
@@ -335,6 +370,12 @@ export function createRelay({ ctx, notifyFor, decisionsFor = async () => null, h
       await st.set(companyId, 'cleared', cleared);
       // card がある間は、最後の card が片付いた後にも 1 回は押された操作を取りに行く印を立てる
       if (Object.values(sent).some(x => x.actions.length) && !(await st.get(companyId, 'drain', false))) await st.set(companyId, 'drain', true);
+      if (ok.has('stopped')) {
+        // card が消えた（2 回続けて 0 人）ら止まりを終える。続いている間は始まりの時刻と push した日を覚える
+        // 終わった止まりは空の {} で書く（本体の状態の値に null を書くと sync ごと落ちた・2026-11-25 止まりの無い会社で）
+        await st.set(companyId, 'stopped', sent[stoppedKey] || current.has(stoppedKey) ? stoppedState : {});
+        if (!stoppedPrimed) await st.set(companyId, 'stoppedPrimed', true);
+      }
       if (!primed && READ_KINDS.every(k => ok.has(k))) await st.set(companyId, 'primed', true);
       if (!casePrimed && caseAll) await st.set(companyId, 'caseReady', true);
       return stats;

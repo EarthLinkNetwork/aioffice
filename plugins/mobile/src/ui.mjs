@@ -148,7 +148,7 @@ function ListSection({ rows, reload, admin }) {
   return h(Sec, { title: 'つないでいるスマホ' }, [
     ...(rows.length ? rows.map(b => h('div', { key: b.bindingId, style: S.row }, h('span', { style: { flex: 1, minWidth: 0 } }, b.email || '（メールアドレスなし）', b.mine ? h('span', { style: S.pill }, 'あなた') : null), h(Btn, { small: true, label: '外す', onClick: () => out(b) })))
       : [h('p', { style: S.sub }, 'まだつないでいません。')]),
-    h('p', { style: S.sub }, '自分の分と、会社の管理者は全員の分を外せます。外すと、そのスマホにこの会社の件は届かなくなります。'),
+    h('p', { style: S.sub }, '自分の分と、会社の管理者は全員の分を外せます。外すと、そのスマホにこの会社の知らせは届かなくなります。'),
     admin ? h('div', { style: { display: 'grid', gap: 6, marginTop: 6 } },
       h('p', { style: S.sub }, 'この plugin を外す前に、全員の判断の承認を取り消してください（外すだけでは取り消されません）。'),
       sure ? h('div', { style: S.actions }, h(Btn, { label: '取り消す', onClick: all, primary: true }), h(Btn, { label: 'やめる', onClick: () => setSure(false) }))

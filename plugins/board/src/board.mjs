@@ -300,7 +300,7 @@ export function BoardPage() {
   }
 
   if (caseId) return h('div', { className: 'aio aiob', 'data-board': 'case' }, h('style', null, OFFICE_CSS + BOARD_CSS + CASE_CSS),
-    h(CasePage, { api, t, issueId: caseId, companyPrefix, agents, labels, backHref: boardPath, onBack: goCase(null) }));
+    h(CasePage, { api, t, issueId: caseId, companyId, companyPrefix, agents, labels, backHref: boardPath, onBack: goCase(null), hrefOf: id => caseHref(boardPath, id), goCase }));
   return h('div', { className: 'aio aiob', 'data-board': '1' }, h('style', null, OFFICE_CSS + BOARD_CSS + CASE_CSS + DESK_CSS),
     h('div', { className: 'aiob-head' }, h('h1', null, t('board_title'))),
     head,

@@ -23,6 +23,8 @@ const errors = [];
 const ctx = await browser.newContext({ viewport: { width: 1100, height: 760 }, locale: LANG === 'ja' ? 'ja-JP' : 'en-US' });
 const page = await ctx.newPage();
 page.on('pageerror', e => errors.push(String(e)));
+// 診断: wizard の口の 2xx 以外の応答を書き出す（段が進まない時に、断られたのか・落ちたのかを CI のログで分ける・2026-11-25 の arm64）
+page.on('response', async r => { if (r.url().includes('/setup/api/') && r.status() >= 300) console.error(`wizard の口: ${r.request().method()} ${new URL(r.url()).pathname} ${r.status()} ${(await r.text().catch(() => '')).slice(0, 200)}`); });
 let n = 0;
 const shot = async name => { if (OUT) await page.screenshot({ path: path.join(OUT, `${LANG}_${String(++n).padStart(2, '0')}-${name}.png`) }); };
 const onStep = async id => { await page.waitForSelector(`section[data-step="${id}"]`); assert.equal(await page.textContent(`section[data-step="${id}"] h2`), T.step[id], `${id} の見出し`); assert.doesNotMatch(await page.textContent('#app'), /null|undefined/, `${id} に null・undefined の文字が出ない`); assert.equal((await page.$('.warn')) === null, true, 'volume の警告が出ない（名前つきの volume）'); };

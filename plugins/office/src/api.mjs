@@ -33,8 +33,8 @@ export function safeHref(raw) {
 const OPEN_STATUSES = 'backlog,todo,in_progress,in_review,blocked';
 
 export function createApi(fetchFn = (...a) => fetch(...a)) {
-  async function call(method, url, body) {
-    const r = await fetchFn(url, { method, credentials: 'same-origin', headers: { accept: 'application/json', ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  async function call(method, url, body, { signal } = {}) {
+    const r = await fetchFn(url, { method, credentials: 'same-origin', headers: { accept: 'application/json', ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, ...(signal ? { signal } : {}) });
     let json = null; try { json = await r.json(); } catch { json = null; }
     if (!r.ok) throw Object.assign(new Error(json?.error || `${method} ${url} → ${r.status}`), { status: r.status, body: json });
     return json;
@@ -66,7 +66,19 @@ export function createApi(fetchFn = (...a) => fetch(...a)) {
     issue: issueId => call('GET', `/api/issues/${encodeURIComponent(issueId)}`),
     // 件のページの会話（課題のコメント）。書くのは開いている人の名義
     comments: issueId => call('GET', `/api/issues/${encodeURIComponent(issueId)}/comments`),
-    addComment: (issueId, body) => call('POST', `/api/issues/${encodeURIComponent(issueId)}/comments`, { body }),
+    addComment: (issueId, body, opts) => call('POST', `/api/issues/${encodeURIComponent(issueId)}/comments`, { body }, opts),
+    // サブタスク: 子孫をまとめて読む（取り消し・定期の実行も本体の既定のまま）・子を作る（親の会社・親の下）
+    subtasks: async (companyId, rootId) => { const r = await call('GET', `${co(companyId)}/issues?descendantOf=${encodeURIComponent(rootId)}&limit=500`); return Array.isArray(r) ? r : r?.items || []; },
+    addChild: (parentId, { title, assigneeAgentId }) => call('POST', `/api/issues/${encodeURIComponent(parentId)}/children`, { title, status: 'todo', ...(assigneeAgentId ? { assigneeAgentId } : {}) }),
+    // 添付: 1 つずつ multipart で送る（本体の項目名は file・上限 10MB）
+    upload: async (companyId, issueId, file, { signal } = {}) => {
+      const fd = new FormData(); fd.append('file', file, file.name);
+      const url = `${co(companyId)}/issues/${encodeURIComponent(issueId)}/attachments`;
+      const r = await fetchFn(url, { method: 'POST', credentials: 'same-origin', headers: { accept: 'application/json' }, body: fd, ...(signal ? { signal } : {}) });
+      let json = null; try { json = await r.json(); } catch { json = null; }
+      if (!r.ok) throw Object.assign(new Error(json?.error || `POST ${url} → ${r.status}`), { status: r.status, body: json });
+      return json;
+    },
     labels: companyId => call('GET', `${co(companyId)}/labels`),
     createLabel: (companyId, name, color) => call('POST', `${co(companyId)}/labels`, { name, color }),
     // 課題の状態・ラベルを変える（札を列へ動かした時）。patch は board-lib の movePatch と、case-lib の goPatch・dropPatch が作った物だけを渡す

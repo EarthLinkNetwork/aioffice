@@ -13,7 +13,7 @@ export function Login({ provider, onSignIn }: { provider: string; onSignIn: () =
         <T weight="dot" style={{ fontSize: 28, lineHeight: 34, color: c.accentInk }}>AI</T>
       </View>
       <T weight="heavy" style={{ fontSize: 20, textAlign: 'center' }}>AI オフィス</T>
-      <T style={{ fontSize: 13, color: c.sub, textAlign: 'center' }}>AI の担当が「決めてほしい」件を、スマホで受けて決められます。</T>
+      <T style={{ fontSize: 13, color: c.sub, textAlign: 'center' }}>AI の担当が「決めてほしい」事を、スマホで受けて決められます。</T>
       <Btn variant="primary" label={`${provider} でサインイン`} disabled={busy} onPress={async () => { setBusy(true); await onSignIn(); setBusy(false); }} />
       <T style={{ fontSize: 13, color: c.sub, textAlign: 'center' }}>アカウントが無い時は会社の管理者に頼んでください。</T>
     </View>

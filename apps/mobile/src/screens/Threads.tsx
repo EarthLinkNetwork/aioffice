@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView } from 'react-native';
 import type { NotifyClient, Thread } from '../notify/client';
-import { threadMeta } from '../chat/logic';
+import { showCardText, threadMeta } from '../chat/logic';
 import { useColors } from '../theme';
 import { Btn, T } from '../ui';
 
@@ -23,12 +23,12 @@ export function Threads({ client, bindingId, agentId, onOpen, onToast }: {
       {(threads ?? []).map(t => (
         <Pressable key={t.id} onPress={() => onOpen(t.id)} accessibilityRole="button"
           style={({ pressed }) => ({ backgroundColor: c.card, borderWidth: 1, borderColor: c.line, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, opacity: pressed ? 0.7 : 1 })}>
-          <T weight="bold" numberOfLines={1}>{t.title}</T>
+          <T weight="bold" numberOfLines={1}>{showCardText(t.title)}</T>
           <T style={{ fontSize: 12, color: c.sub }}>{threadMeta(t)}</T>
         </Pressable>
       ))}
       {threads && threads.length === 0 ? <T style={{ textAlign: 'center', color: c.sub, paddingVertical: 16 }}>まだ話はありません</T> : null}
-      <T style={{ fontSize: 12, color: c.sub, textAlign: 'center' }}>話は 1 件ずつ Paperclip の課題として残る</T>
+      <T style={{ fontSize: 12, color: c.sub, textAlign: 'center' }}>話は 1 つずつ Paperclip の課題として残る</T>
     </ScrollView>
   );
 }

@@ -8,7 +8,7 @@ import { tapTarget, tapTargetOf, pushReloads } from '../apps/mobile/src/notify/p
 import { MAIN_TABS } from '../apps/mobile/src/chat/labels.ts';
 import {
   THINKING, MAX_TEXT, POLL_MS, POLL_MAX_MS, statusLabel, dayLabel, threadMeta, showThinking, nextPoll, mergeMessages, lastAt,
-  cardChatText, cardChip, cardAgent, startCardChat, deptRows, todayMeta, editionLabel, handedNote, rulesNote, talkPlaceholder, checkText,
+  cardChatText, cardChip, showCardText, cardAgent, startCardChat, deptRows, todayMeta, editionLabel, handedNote, rulesNote, talkPlaceholder, checkText,
 } from '../apps/mobile/src/chat/logic.ts';
 import { root, push, pop, top, backLabel, tabOf, chatRoute, chatKey, withThread, openThreadStack } from '../apps/mobile/src/chat/nav.ts';
 
@@ -75,7 +75,7 @@ test('口: 送る失敗は例外にせず画面に出す文を返す（404・通
   const a = setup({ routes: { 'POST /api/v1/app/bindings/b1/threads/t1/messages': { status: 404, body: { code: 'thread-not-found' } } } });
   assert.deepEqual(await a.client.sendMessage('b1', 't1', 'x'), { ok: false, message: 'この話は見つかりません' });
   const b = setup({ routes: { 'POST /api/v1/app/bindings/b1/threads': { status: 404, body: { code: 'card-not-found' } } } });
-  assert.deepEqual(await b.client.createThread('b1', { agentId: 'a', text: 'x', cardId: 'c' }), { ok: false, message: 'この件はもうありません' });
+  assert.deepEqual(await b.client.createThread('b1', { agentId: 'a', text: 'x', cardId: 'c' }), { ok: false, message: 'この判断はもうありません' });
   // 通信の失敗・期限は、届いたかを読み直しで確かめる。確かめる読みも失敗した時は「もう一度押して」と言わない（二重に送らない）
   const c = setup({ verifyWaitMs: 0, fetch: async () => { throw new TypeError('Network request failed'); } });
   const cm = (await c.client.sendMessage('b1', 't1', 'x')).message;
@@ -298,13 +298,19 @@ test('発言を合わせる: 同じ id は 1 つ・古い順・最後の時刻�
 
 test('判断の件から話す: 本文に件の題・要約・選択肢を入れ、最初の行は ④ の札になる', () => {
   const t = cardChatText(card());
-  assert.match(t, /^判断の件から: Gateway の直しの方針\n/);
+  assert.match(t, /^判断カードから: Gateway の直しの方針\n/);
   assert.match(t, /今の PR ではなく別の課題で直す方針を了承しますか。/);
   assert.match(t, /別の課題で直す方針を了承/);
   assert.match(t, /今は了承しない/);
   assert.ok(t.length <= MAX_TEXT);
-  assert.equal(cardChip([{ id: 'm', role: 'me', text: t, at: 'x' }]), '判断の件から: Gateway の直しの方針');
+  assert.equal(cardChip([{ id: 'm', role: 'me', text: t, at: 'x' }]), '判断カードから: Gateway の直しの方針');
+  // 前の版のアプリが書いた印も札として読み、札は今の印で出す（画面に「件」を出さない）
+  assert.equal(cardChip([{ id: 'm', role: 'me', text: '判断の件から: 前の題\n本文', at: 'x' }]), '判断カードから: 前の題');
   assert.equal(cardChip([{ id: 'm', role: 'me', text: 'ふつうの話', at: 'x' }]), null);
+  // 話の一覧の題も、前の印は今の印で出す（ふつうの題はそのまま）
+  assert.equal(showCardText('判断の件から: 前の題'), '判断カードから: 前の題');
+  assert.equal(showCardText('判断カードから: 今の題'), '判断カードから: 今の題');
+  assert.equal(showCardText('ふつうの話'), 'ふつうの話');
   assert.ok(cardChatText(card({ summary: 'あ'.repeat(9000) })).length <= MAX_TEXT);
 });
 
@@ -328,7 +334,7 @@ test('判断の件から話す流れ: cardId つきで新しい話を作り、�
   assert.equal(sent[0][1].agentId, 'a-sec');
   assert.equal(sent[0][1].text, cardChatText(card({ requestedBy: { agentId: 'a-sec' } })));
   // 失敗は文で返す（作れない・担当の一覧が読めない・結びつけが分からない）
-  assert.deepEqual(await startCardChat({ ...client, createThread: async () => ({ ok: false, message: 'この件はもうありません' }) }, card()), { ok: false, message: 'この件はもうありません' });
+  assert.deepEqual(await startCardChat({ ...client, createThread: async () => ({ ok: false, message: 'この判断はもうありません' }) }, card()), { ok: false, message: 'この判断はもうありません' });
   assert.equal((await startCardChat({ ...client, chatAgents: async () => { throw new Error('500'); } }, card())).ok, false);
   assert.equal((await startCardChat(client, card({ bindingId: undefined }))).ok, false);
 });

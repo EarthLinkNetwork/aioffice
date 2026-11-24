@@ -6,7 +6,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { Linking, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { commonActions, isGuarded, sectionTitle, shownSummary, type Card, type CardOption, type CardSection } from '../card';
-import { CARD_PREFIX, DEFAULT_ASK, MAX_TEXT, THINKING } from '../chat/logic';
+import { DEFAULT_ASK, MAX_TEXT, THINKING, isCardStart } from '../chat/logic';
 import { useThread, type CreateThread, type PushSignal } from '../chat/useThread';
 import { choiceOptions, choiceStep } from '../decide';
 import type { NotifyClient } from '../notify/client';
@@ -71,15 +71,15 @@ function CardTalkBody({ talk, text, setText, c }: { talk: Talk; text: string; se
   const t = useThread({ client: talk.client, bindingId: talk.bindingId, threadId: talk.threadId, push: talk.push, onToast: talk.onToast, onThread: id => talk.onStarted(id) });
   // 最初の発言（件の中身つき）は、自分が書いた一言（最後の段落）だけを出す。一言が無ければ出さない
   const shown = t.messages.flatMap((m, i) => {
-    if (i !== 0 || m.role !== 'me' || !m.text.startsWith(CARD_PREFIX)) return [m];
+    if (i !== 0 || m.role !== 'me' || !isCardStart(m.text)) return [m];
     const said = m.text.split('\n\n').pop()?.trim() ?? '';
     return said && said !== DEFAULT_ASK ? [{ ...m, text: said }] : [];
   }).slice(-RECENT);
   const send = async () => { if (await t.send(text.trim(), talk.start)) setText(''); };
   return (
-    <Sec title={`この件の話（${talk.name}）`}>
+    <Sec title={`この判断の話（${talk.name}）`}>
       <View style={{ gap: 8 }}>
-        {!t.threadId ? <T style={{ fontSize: 12, color: c.sub }}>{`ここに書くと、件の中身を添えて${talk.name}との話が始まります。決まったら、上で選んでください。`}</T> : null}
+        {!t.threadId ? <T style={{ fontSize: 12, color: c.sub }}>{`ここに書くと、判断の中身を添えて${talk.name}との話が始まります。決まったら、上で選んでください。`}</T> : null}
         {t.threadId && !t.ready ? <T style={{ fontSize: 12, color: c.sub }}>読んでいます…</T> : null}
         {shown.map(m => <Bubble key={m.id} m={m} />)}
         {t.thinking ? <T style={{ fontSize: 12.5, color: c.sub }}>{THINKING}</T> : null}
@@ -199,7 +199,7 @@ function Approval({ card, onAct, talk }: { card: Card; onAct: OnAct; talk?: Talk
         {talk ? <TalkButton talk={talk} label={talk.threadId ? `${talk.name}との話を開く` : `決められない — ${talk.name}と話す`} /> : null}
       </ActionBar>
       <Sheet visible={sheet === 'confirm'} onClose={() => setSheet(null)}>
-        <T weight="bold" style={{ fontSize: 15 }}>{card.risk === 'external-send' ? `自分の名前で${to ? ` ${to} に` : ''}送ります` : card.risk === 'money' ? 'お金がかかる件を承認します' : '取り消せない件を承認します'}</T>
+        <T weight="bold" style={{ fontSize: 15 }}>{card.risk === 'external-send' ? `自分の名前で${to ? ` ${to} に` : ''}送ります` : card.risk === 'money' ? 'お金がかかる判断を承認します' : '取り消せない判断を承認します'}</T>
         <T style={{ color: c.sub, fontSize: 12.5 }}>全文を確かめてから承認してください</T>
         {err ? <T style={{ color: c.urgent, fontSize: 12.5 }}>{err}</T> : null}
         <Btn label="承認する" variant="primary" disabled={busy} onPress={() => run('approve')} />
@@ -277,7 +277,7 @@ function Choice({ card, onAct, talk }: { card: Card; onAct: OnAct; talk?: Talk }
       </ScrollView>
       <Sheet visible={sheet?.step === 'confirm'} onClose={() => setSheet(null)}>
         <T weight="bold" style={{ fontSize: 15 }}>{`「${sheet?.opt.label ?? ''}」で決めます`}</T>
-        <T style={{ color: c.sub, fontSize: 12.5 }}>{card.risk === 'external-send' ? '外へ送られる件です。全文を確かめてから押してください' : card.risk === 'money' ? 'お金がかかる件です' : '取り消せない件です'}</T>
+        <T style={{ color: c.sub, fontSize: 12.5 }}>{card.risk === 'external-send' ? '外へ送られる判断です。全文を確かめてから押してください' : card.risk === 'money' ? 'お金がかかる判断です' : '取り消せない判断です'}</T>
         {err ? <T style={{ color: c.urgent, fontSize: 12.5 }}>{err}</T> : null}
         <Btn label={sending ? '送っています…' : `「${sheet?.opt.label ?? ''}」で決める`} variant="primary" disabled={!!sending} onPress={() => sheet && send(sheet.opt.id, { inputs })} />
         <Btn label="やめる" onPress={() => setSheet(null)} />
